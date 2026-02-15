@@ -170,9 +170,35 @@ async function handleDateClick(dateStr, cell) {
         });
 
         if (record?.id !== undefined && record?.id !== null) {
-            await grist.docApi.applyUserActions([
-                ['RemoveRecord', 'Agenda', record.id]
-            ]);
+            try {
+                const odjData = await grist.docApi.fetchTable('ODJ');
+                const odjDates = Array.isArray(odjData?.Date_de_la_reunion) ? odjData.Date_de_la_reunion : [];
+
+                const linkedRecords = odjDates.filter(date => toDateStringSafe(date) === dateStr);
+
+                if (linkedRecords.length > 0) {
+                    const dateParts = dateStr.split('-');
+                    const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                    const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
+
+                    const confirmed = window.confirm(
+                        `Des dossiers sont enregistrés pour la réunion du ${formattedDate}. Êtes-vous certain de vouloir retirer cette date de l'agenda ?`
+                    );
+
+                    if (!confirmed) {
+                        return;
+                    }
+                }
+
+                await grist.docApi.applyUserActions([
+                    ['RemoveRecord', 'Agenda', record.id]
+                ]);
+            } catch (error) {
+                console.error('Erreur lors de la vérification des dossiers ODJ:', error);
+                await grist.docApi.applyUserActions([
+                    ['RemoveRecord', 'Agenda', record.id]
+                ]);
+            }
         }
     } else {
         const dateObj = new Date(dateStr + 'T12:00:00');
