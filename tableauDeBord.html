@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Widget Réunions</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+            color: #262633;
+            background-color: #f7f7f7;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            min-height: 100vh;
+        }
+
+        /* Onglets */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e8e8e8;
+            margin-bottom: 30px;
+            gap: 5px;
+        }
+
+        .tab-button {
+            padding: 12px 24px;
+            background-color: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+            color: #666;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button:hover {
+            color: #16b378;
+            background-color: #f0f9f6;
+        }
+
+        .tab-button.active {
+            color: #16b378;
+            border-bottom-color: #16b378;
+            font-weight: 600;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Sections */
+        .section {
+            margin-bottom: 35px;
+            padding: 20px;
+            background-color: #fafafa;
+            border-radius: 8px;
+            border-left: 4px solid #16b378;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #262633;
+            margin-bottom: 20px;
+        }
+
+        /* Formulaires */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group-inline {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .form-group-inline>div {
+            flex: 1;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #262633;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: #16b378;
+            box-shadow: 0 0 0 3px rgba(22, 179, 120, 0.1);
+        }
+
+        .form-select-small {
+            max-width: 250px;
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-date {
+            max-width: 200px;
+        }
+
+        /* Radio buttons */
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px 16px;
+            border: 2px solid #d9d9d9;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .radio-label:hover {
+            border-color: #16b378;
+            background-color: #f0f9f6;
+        }
+
+        .radio-label input[type="radio"] {
+            margin-right: 8px;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+
+        .radio-label input[type="radio"]:checked+span {
+            font-weight: 600;
+            color: #16b378;
+        }
+
+        .radio-label:has(input[type="radio"]:checked) {
+            border-color: #16b378;
+            background-color: #f0f9f6;
+        }
+
+        /* Checkboxes */
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px 12px;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .checkbox-label:hover {
+            background-color: #f0f9f6;
+            border-color: #16b378;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+
+        .checkbox-label input[type="checkbox"]:checked+span {
+            font-weight: 500;
+            color: #16b378;
+        }
+
+        /* Multi-select */
+        .multi-select {
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #fff;
+            min-height: 100px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .multi-select-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+            user-select: none;
+        }
+
+        .multi-select-option:hover {
+            background-color: #f0f9f6;
+        }
+
+        .multi-select-option.selected {
+            background-color: #16b378;
+            color: white;
+            font-weight: 500;
+        }
+
+        /* Lignes dynamiques */
+        .dynamic-lines {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .dynamic-line {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .dynamic-line input {
+            flex: 1;
+        }
+
+        .btn-add-line {
+            padding: 8px 12px;
+            background-color: #16b378;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+            min-width: 36px;
+        }
+
+        .btn-add-line:hover {
+            background-color: #129963;
+        }
+
+        .btn-remove-line {
+            padding: 8px 12px;
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+            min-width: 36px;
+        }
+
+        .btn-remove-line:hover {
+            background-color: #ee5a52;
+        }
+
+        /* Ordre du jour - Dossier */
+        .dossier-block {
+            background-color: #ffffff;
+            border: 2px solid #e8e8e8;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .dossier-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        .dossier-number {
+            font-weight: 600;
+            font-size: 16px;
+            color: #16b378;
+        }
+
+        .btn-remove-dossier {
+            padding: 6px 12px;
+            background-color: transparent;
+            color: #ff6b6b;
+            border: 1px solid #ff6b6b;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-remove-dossier:hover {
+            background-color: #ff6b6b;
+            color: white;
+        }
+
+        .dossier-fields {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Boutons principaux */
+        .btn-primary {
+            padding: 12px 24px;
+            background-color: #16b378;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(22, 179, 120, 0.2);
+        }
+
+        .btn-primary:hover {
+            background-color: #129963;
+            box-shadow: 0 4px 8px rgba(22, 179, 120, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            padding: 12px 24px;
+            background-color: transparent;
+            color: #16b378;
+            border: 2px solid #16b378;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            background-color: #16b378;
+            color: white;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            justify-content: center;
+        }
+
+        /* Conditional input */
+        .conditional-input {
+            margin-top: 10px;
+            padding: 12px;
+            background-color: #fffbea;
+            border: 1px dashed #f5a623;
+            border-radius: 4px;
+        }
+
+        /* Autocomplete suggestions */
+        .autocomplete-container {
+            position: relative;
+        }
+
+        .autocomplete-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background-color: white;
+            border: 1px solid #d9d9d9;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+
+        /* Bouton de réinitialisation */
+        .input-with-clear {
+            position: relative;
+        }
+
+        .input-with-clear input {
+            padding-right: 35px;
+        }
+
+        .btn-clear-input {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 4px 8px;
+            line-height: 1;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+            display: none;
+            z-index: 10;
+        }
+
+        .btn-clear-input:hover {
+            background-color: #f0f0f0;
+            color: #d32f2f;
+        }
+
+        .btn-clear-input.visible {
+            display: block;
+        }
+
+        .autocomplete-suggestions.visible {
+            display: block;
+        }
+
+        .autocomplete-item {
+            padding: 10px 12px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .autocomplete-item:hover,
+        .autocomplete-item.highlighted {
+            background-color: #f0f9f6;
+        }
+
+        .autocomplete-item.highlighted {
+            font-weight: 500;
+        }
+
+        /* Consultation view */
+        .consult-selector {
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f0f9f6;
+            border-radius: 8px;
+        }
+
+        .consult-selector-label {
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .consult-results {
+            margin-top: 30px;
+        }
+
+        .result-item {
+            padding: 15px;
+            background-color: #ffffff;
+            border: 1px solid #e8e8e8;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .result-header {
+            font-weight: 600;
+            color: #16b378;
+            margin-bottom: 8px;
+        }
+
+        .result-content {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        /* États avec couleurs */
+        .etat-cloture {
+            background-color: #4A90E2 !important;
+            color: white;
+        }
+
+        .etat-avance-tres-bien {
+            background-color: #479415 !important;
+            color: white;
+        }
+
+        .etat-avance-bien {
+            background-color: #82b34f !important;
+            color: white;
+        }
+
+        .etat-ras {
+            background-color: #FDD835 !important;
+            color: #262633;
+        }
+
+        .etat-tensions {
+            background-color: #FF8A80 !important;
+            color: #262633;
+        }
+
+        .etat-blocage {
+            background-color: #D32F2F !important;
+            color: white;
+        }
+
+        /* Tableau pour affichage dossiers */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+        }
+
+        thead {
+            background-color: #174040;
+        }
+
+        th {
+            background-color: #174040;
+            color: white;
+            padding: 12px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        /* Styles pour les contrôles dans les cellules éditables */
+        td select,
+        td input[type="date"] {
+            color: #262633 !important;
+            background-color: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid #d9d9d9 !important;
+        }
+
+        td select option {
+            color: #262633 !important;
+        }
+
+        /* Options sélectionnées dans les select multiples */
+        td select[multiple] option:checked {
+            background-color: #00ddff !important;
+        }
+
+        td select[multiple]:focus option:checked {
+            background-color: #129963 !important;
+        }
+
+        tr:hover {
+            background-color: #f0f9f6;
+        }
+
+        /* Filtres */
+        .filter-controls {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #fafafa;
+            border-radius: 6px;
+        }
+
+        .filter-group {
+            flex: 1;
+        }
+
+        .filter-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        /* Impression */
+        @media print {
+
+            .tabs,
+            .consult-selector,
+            .form-group,
+            .button-group,
+            #consult-print-button-container,
+            #reunion-print-button-container {
+                display: none !important;
+            }
+
+            .section {
+                page-break-inside: avoid;
+            }
+
+            table {
+                page-break-inside: auto;
+            }
+
+            tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            .tabs {
+                overflow-x: auto;
+            }
+
+            .checkbox-group {
+                flex-direction: column;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .filter-controls {
+                flex-direction: column;
+            }
+        }
+
+        /* Helpers */
+        .mt-10 {
+            margin-top: 10px;
+        }
+
+        .mt-20 {
+            margin-top: 20px;
+        }
+
+        .mb-10 {
+            margin-bottom: 10px;
+        }
+
+        .mb-20 {
+            margin-bottom: 20px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Loading state */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+
+            0%,
+            20% {
+                content: '.';
+            }
+
+            40% {
+                content: '..';
+            }
+
+            60%,
+            100% {
+                content: '...';
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Onglets -->
+        <div class="tabs">
+            <button class="tab-button active" data-tab="saisir">Saisir</button>
+            <button class="tab-button" data-tab="reunion">Réunion</button>
+            <button class="tab-button" data-tab="consulter">Consulter</button>
+            <button class="tab-button" data-tab="modifier">Modifier</button>
+        </div>
+
+        <!-- ONGLET SAISIR -->
+        <div id="tab-saisir" class="tab-content active">
+            <!-- Ordre du jour -->
+            <div class="section">
+                <h2 class="section-title">Ordre du jour</h2>
+
+                <div class="form-group form-group-inline">
+                    <div>
+                        <label class="form-label">Date de la réunion :</label>
+                        <input type="date" class="form-input form-date" id="saisir-date">
+                    </div>
+
+                    <div>
+                        <label class="form-label">Réunions suivantes :</label>
+                        <select class="form-select" id="saisir-reunions-suivantes">
+                            <option value="">-- Sélectionner une autre date --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="saisir-dossiers">
+                    <div class="dossier-block" data-dossier="1">
+                        <div class="dossier-header">
+                            <span class="dossier-number">Dossier 1</span>
+                        </div>
+                        <div class="dossier-fields">
+                            <div class="form-group">
+                                <label class="form-label">Dossier :</label>
+                                <div class="autocomplete-container">
+                                    <input type="text" class="form-input autocomplete-input dossier-intitule"
+                                        placeholder="Intitulé du dossier">
+                                    <div class="autocomplete-suggestions"></div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Porteur(s) :</label>
+                                <div class="multi-select dossier-porteurs">
+                                    <!-- Généré dynamiquement -->
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Actions à mettre en œuvre – étapes :</label>
+                                <div class="autocomplete-container">
+                                    <textarea class="form-textarea autocomplete-input dossier-actions"
+                                        placeholder="Décrire les actions et étapes"></textarea>
+                                    <div class="autocomplete-suggestions"></div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Échéance :</label>
+                                <input type="date" class="form-input form-date dossier-echeance">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">État :</label>
+                                <select class="form-select dossier-etat form-select-small">
+                                    <option value="">-- Sélectionner --</option>
+                                    <!-- Généré dynamiquement -->
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-secondary" id="btn-add-dossier">+ Ajouter un dossier</button>
+            </div>
+
+            <div class="button-group">
+                <button type="button" class="btn-primary" id="btn-valider-saisie">Valider la saisie</button>
+            </div>
+        </div>
+
+        <!-- ONGLET RÉUNION -->
+        <div id="tab-reunion" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">Sélectionner une réunion</h2>
+                <div class="form-group">
+                    <label class="form-label">Date de la réunion :</label>
+                    <select class="form-select form-select-small" id="reunion-date-select">
+                        <option value="">-- Choisir une date --</option>
+                        <!-- Généré dynamiquement -->
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">Ordre du jour</h2>
+                <div class="table-container" id="reunion-odj-table">
+                    <!-- Généré dynamiquement -->
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">Dossiers à échéance</h2>
+                <div class="table-container" id="reunion-echeance-table">
+                    <!-- Généré dynamiquement -->
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">Dossiers échus non clôturés</h2>
+                <div class="table-container" id="reunion-expired-table">
+                    <!-- Généré dynamiquement -->
+                </div>
+            </div>
+
+            <div class="button-group hidden" id="reunion-print-button-container">
+                <button type="button" class="btn-primary" id="btn-save-reunion">Enregistrer les modifications</button>
+                <button type="button" class="btn-secondary" id="btn-print-reunion">🖨️ Imprimer</button>
+            </div>
+        </div>
+
+        <!-- ONGLET CONSULTER -->
+        <div id="tab-consulter" class="tab-content">
+            <div class="consult-selector">
+                <label class="consult-selector-label">Consulter par :</label>
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" name="consult-type" value="date" checked>
+                        <span>Date de réunion</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="consult-type" value="echeance">
+                        <span>Date d'échéance</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="consult-type" value="dossier">
+                        <span>Dossier</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="consult-type" value="porteur">
+                        <span>Porteur</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Consultation par date -->
+            <div id="consult-date-selector" class="form-group">
+                <label class="form-label">Sélectionner une date de réunion :</label>
+                <select class="form-select form-select-small" id="consult-date-select">
+                    <option value="">-- Choisir une date --</option>
+                    <!-- Généré dynamiquement -->
+                </select>
+            </div>
+
+            <!-- Consultation par dossier -->
+            <div id="consult-dossier-selector" class="form-group hidden">
+                <label class="form-label">Sélectionner un dossier :</label>
+                <div class="autocomplete-container input-with-clear">
+                    <input type="text" class="form-input" id="consult-dossier-input"
+                        placeholder="Rechercher un dossier...">
+                    <button type="button" class="btn-clear-input" id="btn-clear-consult-dossier"
+                        title="Effacer">×</button>
+                    <div class="autocomplete-suggestions"></div>
+                </div>
+            </div>
+
+            <!-- Consultation par porteur -->
+            <div id="consult-porteur-selector" class="form-group hidden">
+                <label class="form-label">Sélectionner un porteur :</label>
+                <select class="form-select form-select-small" id="consult-porteur-select">
+                    <option value="">-- Choisir un porteur --</option>
+                    <!-- Généré dynamiquement -->
+                </select>
+
+                <div class="filter-controls mt-20 hidden" id="consult-porteur-filters">
+                    <div class="filter-group">
+                        <div class="filter-title">Trier par :</div>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="sort-type" value="reunion" checked>
+                                <span>Date de réunion</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="sort-type" value="echeance">
+                                <span>Date d'échéance</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <div class="filter-title">Filtrer par état :</div>
+                        <div class="checkbox-group" id="filter-etat-checkboxes">
+                            <!-- Généré dynamiquement -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Consultation par échéance -->
+            <div id="consult-echeance-selector" class="form-group hidden">
+                <label class="form-label">Sélectionner une date d'échéance :</label>
+                <select class="form-select form-select-small" id="consult-echeance-select">
+                    <option value="">-- Choisir une date --</option>
+                    <!-- Généré dynamiquement -->
+                </select>
+            </div>
+
+            <div class="consult-results" id="consult-results">
+                <!-- Résultats affichés dynamiquement -->
+            </div>
+
+            <div class="button-group hidden" id="consult-print-button-container">
+                <button type="button" class="btn-secondary" id="btn-print-consult">🖨️ Imprimer</button>
+            </div>
+        </div>
+
+        <!-- ONGLET MODIFIER -->
+        <div id="tab-modifier" class="tab-content">
+            <div class="consult-selector">
+                <label class="consult-selector-label">Modifier :</label>
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" name="modify-type" value="date" checked>
+                        <span>Date de réunion</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="modify-type" value="echeance">
+                        <span>Date d'échéance</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="modify-type" value="dossier">
+                        <span>Dossier</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="modify-type" value="porteur">
+                        <span>Porteur</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Sélecteurs -->
+            <div id="modify-date-selector" class="form-group">
+                <label class="form-label">Sélectionner une date de réunion :</label>
+                <select class="form-select form-select-small" id="modify-date-select">
+                    <option value="">-- Choisir une date --</option>
+                    <!-- Généré dynamiquement -->
+                </select>
+            </div>
+
+            <div id="modify-dossier-selector" class="form-group hidden">
+                <label class="form-label">Sélectionner un dossier :</label>
+                <div class="autocomplete-container input-with-clear">
+                    <input type="text" class="form-input" id="modify-dossier-input"
+                        placeholder="Rechercher un dossier...">
+                    <button type="button" class="btn-clear-input" id="btn-clear-modify-dossier"
+                        title="Effacer">×</button>
+                    <div class="autocomplete-suggestions"></div>
+                </div>
+            </div>
+
+            <div id="modify-porteur-selector" class="form-group hidden">
+                <label class="form-label">Sélectionner un porteur :</label>
+                <select class="form-select form-select-small" id="modify-porteur-select">
+                    <option value="">-- Choisir un porteur --</option>
+                    <!-- Généré dynamiquement -->
+                </select>
+
+                <div id="modify-porteur-dossier-selector" class="form-group hidden mt-20">
+                    <label class="form-label">Sélectionner un dossier (optionnel) :</label>
+                    <select class="form-select" id="modify-porteur-dossier-select">
+                        <option value="">-- Afficher tous les dossiers du porteur --</option>
+                        <!-- Généré dynamiquement -->
+                    </select>
+                </div>
+
+                <div class="filter-controls mt-20 hidden" id="modify-porteur-filters">
+                    <div class="filter-group">
+                        <div class="filter-title">Affichage :</div>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="modify-hide-expired" checked>
+                            <span>Masquer les dossiers échus</span>
+                        </label>
+                    </div>
+                    <div class="filter-group">
+                        <div class="filter-title">Filtrer par état :</div>
+                        <div class="checkbox-group" id="modify-filter-etat-checkboxes">
+                            <!-- Généré dynamiquement -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="modify-echeance-selector" class="form-group hidden">
+                <label class="form-label">Sélectionner une date d'échéance :</label>
+                <select class="form-select form-select-small" id="modify-echeance-select">
+                    <option value="">-- Choisir une date --</option>
+                    <!-- Généré dynamiquement -->
+                </select>
+            </div>
+
+            <div class="consult-results" id="modify-results">
+                <!-- Formulaires de modification affichés dynamiquement -->
+            </div>
+
+            <div class="button-group hidden" id="modify-buttons">
+                <button type="button" class="btn-primary" id="btn-save-modifications">Enregistrer les
+                    modifications</button>
+                <button type="button" class="btn-secondary" id="btn-cancel-modifications">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="script_v2_simple.js"></script>
+</body>
+
+</html>
