@@ -659,7 +659,7 @@ function attachEventListeners() {
 
     const tabReunion = document.getElementById('tab-reunion');
     if (tabReunion) {
-        tabReunion.addEventListener('input', handleReunionAutoSaveEvent);
+        tabReunion.addEventListener('focusout', handleReunionAutoSaveEvent);
         tabReunion.addEventListener('change', handleReunionAutoSaveEvent);
     }
 
@@ -3708,6 +3708,12 @@ function handleReunionAutoSaveEvent(e) {
         return el && el.contains(e.target);
     });
     if (!inTable) return;
+
+    // Pour les champs contenteditable, on n'enregistre qu'au blur (focusout)
+    // afin de ne pas interrompre la saisie en cours
+    if (e.type === 'focusout' && e.target.contentEditable !== 'true') return;
+    if (e.type === 'change' && e.target.contentEditable === 'true') return;
+
     scheduleReunionAutoSave();
 }
 
