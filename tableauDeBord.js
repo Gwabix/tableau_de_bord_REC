@@ -3357,18 +3357,24 @@ function reunionDisplayData() {
     dossierEcheance = dossierEcheance.filter(d => !odjDossierNames.has(d.Dossier));
 
     // Récupérer les dossiers échus non clôturés
+    // Inclus : échéance passée, OU échéance non définie mais réunion d'origine antérieure
     let dossierExpired = tablesData.ODJ.filter(o => {
-        if (o.Echeance === null || o.Echeance === undefined) return false;
-
-        const echeanceNum = typeof o.Echeance === 'number' ? o.Echeance : Number.parseFloat(o.Echeance);
         const reunionNum = typeof numDateValue === 'number' ? numDateValue : Number.parseFloat(numDateValue);
-
-        // Dates antérieures à la réunion
-        if (echeanceNum >= reunionNum) return false;
 
         // Statut n'est pas "Clôturé"
         const etatName = getEtatNameById(o.Etat);
-        return etatName !== "Clôturé";
+        if (etatName === "Clôturé") return false;
+
+        // Pas de date de réunion ou réunion non antérieure → exclure
+        const dateReunionNum = typeof o.Date_de_la_reunion === 'number' ? o.Date_de_la_reunion : Number.parseFloat(o.Date_de_la_reunion);
+        if (Number.isNaN(dateReunionNum) || dateReunionNum >= reunionNum) return false;
+
+        // Échéance non définie : inclure (dossier d'une réunion passée sans échéance)
+        if (o.Echeance === null || o.Echeance === undefined || o.Echeance === '') return true;
+
+        // Échéance définie : inclure seulement si elle est antérieure à la réunion sélectionnée
+        const echeanceNum = typeof o.Echeance === 'number' ? o.Echeance : Number.parseFloat(o.Echeance);
+        return !Number.isNaN(echeanceNum) && echeanceNum < reunionNum;
     });
     // Garder uniquement la dernière version de chaque dossier
     dossierExpired = getLatestEntriesPerDossier(dossierExpired);
