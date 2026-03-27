@@ -3405,7 +3405,7 @@ function displayODJ(dossiers, dateValue) {
     let html = '';
     if (dossiers.length > 0) {
         html += '<table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Date du changement</th></tr></thead>';
+        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
         html += '<tbody>';
 
         dossiers.forEach(dossier => {
@@ -3422,7 +3422,6 @@ function displayODJ(dossiers, dateValue) {
             html += `<td contenteditable="false">${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
             html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
             html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `<td><input type="date" class="etat-change-date" disabled></td>`;
             html += `</tr>`;
         });
 
@@ -3445,7 +3444,7 @@ function displayDossierEcheance(dossiers, dateValue) {
     let html = '';
     if (dossiers.length > 0) {
         html += '<table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Date du changement</th></tr></thead>';
+        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
         html += '<tbody>';
 
         dossiers.forEach(dossier => {
@@ -3462,7 +3461,6 @@ function displayDossierEcheance(dossiers, dateValue) {
             html += `<td contenteditable="false">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
             html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
             html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `<td><input type="date" class="etat-change-date" disabled></td>`;
             html += `</tr>`;
         });
 
@@ -3485,7 +3483,7 @@ function displayExpiredDossiers(dossiers, dateValue) {
     let html = '';
     if (dossiers.length > 0) {
         html += '<table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>Date réunion</th><th>État</th><th>Changement d\'état</th><th>Date du changement</th></tr></thead>';
+        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>Date réunion</th><th>État</th><th>Changement d\'état</th></tr></thead>';
         html += '<tbody>';
 
         dossiers.forEach(dossier => {
@@ -3503,7 +3501,6 @@ function displayExpiredDossiers(dossiers, dateValue) {
             html += `<td contenteditable="false">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
             html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
             html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `<td><input type="date" class="etat-change-date" disabled></td>`;
             html += `</tr>`;
         });
 
@@ -3662,26 +3659,12 @@ function makeFieldsEditableReunion(container) {
 
         select.addEventListener('change', function () {
             const tr = this.closest('tr');
-            const dateInput = tr.querySelector('.etat-change-date');
 
-            if (this.value) {
-                dateInput.disabled = false;
-                dateInput.style.setProperty('background-color', '#ffffff', 'important');
-                dateInput.style.color = '#262633';
-                if (!dateInput.value) {
-                    dateInput.value = new Date().toISOString().split('T')[0];
-                }
-
+            if (this.value && this.value !== 'Supprimer le dossier') {
                 // Changer la couleur de la ligne selon le nouvel état sélectionné
-                if (this.value !== 'Supprimer le dossier') {
-                    const etatClass = etatColorMap[this.value] || '';
-                    tr.className = etatClass;
-                }
-            } else {
-                dateInput.disabled = true;
-                dateInput.style.setProperty('background-color', '#a4a4a4', 'important');
-                dateInput.value = '';
-
+                const etatClass = etatColorMap[this.value] || '';
+                tr.className = etatClass;
+            } else if (!this.value) {
                 // Restaurer la couleur d'origine
                 const dossierId = tr.dataset.dossierId;
                 const dossierData = tablesData.ODJ.find(d => d.id == dossierId);
@@ -3692,12 +3675,6 @@ function makeFieldsEditableReunion(container) {
                 }
             }
         });
-    });
-
-    // Initialiser la couleur de fond des champs de date désactivés
-    container.querySelectorAll('.etat-change-date').forEach(dateInput => {
-        dateInput.style.setProperty('background-color', '#a4a4a4', 'important');
-        dateInput.style.color = '#3b3b3bff';
     });
 }
 
@@ -3823,18 +3800,17 @@ async function saveReunionModifications() {
                 }
                 // Pour reunion-echeance-table, on garde l'échéance existante car elle n'est pas affichée/éditable
 
-                // Vérifier le changement d'état (toujours dans les dernières colonnes)
+                // Vérifier le changement d'état
                 const etatSelect = row.querySelector('.etat-change-select');
                 const nouvelEtat = etatSelect ? etatSelect.value : '';
-                const etatDateInput = row.querySelector('.etat-change-date');
 
                 if (nouvelEtat === 'Supprimer le dossier') {
                     // Supprimer le dossier
                     updateActions.push(['RemoveRecord', 'ODJ', dossierId]);
-                } else if (nouvelEtat && etatDateInput && etatDateInput.value) {
-                    // Ajouter une nouvelle ligne avec le nouvel état et une date spécifique
+                } else if (nouvelEtat) {
+                    // Ajouter une nouvelle ligne avec le nouvel état à la date du jour
                     const nouvelEtatId = getEtatIdByName(nouvelEtat);
-                    const dateChangement = Math.floor(new Date(etatDateInput.value).getTime() / 1000);
+                    const dateChangement = Math.floor(Date.now() / 1000);
 
                     // Collecter cette date pour l'ajouter à l'Agenda (sécurité OWASP)
                     newDates.add(dateChangement);
