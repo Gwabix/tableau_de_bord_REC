@@ -716,3 +716,52 @@ tr:hover {
         content: '...';
     }
 }
+
+/* Enregistrement automatique */
+@keyframes rotation {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.autosave-spinner {
+    display: inline-block;
+    animation: rotation 0.7s linear infinite;
+    transform-origin: center center;
+}
+
+.autosave-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0.2rem 1rem;
+    border-radius: 15px;
+    border: 2px solid transparent;
+    background-color: transparent;
+    transition: opacity 0.5s ease;
+    opacity: 0;
+    pointer-events: none;
+    min-height: 2rem;
+}
+
+.autosave-status.autosave-saving {
+    opacity: 1;
+    color: #555555;
+    border-color: #aaaaaa;
+    background-color: #f0f0f0;
+}
+
+.autosave-status.autosave-saved {
+    opacity: 1;
+    color: #1b6b1b;
+    border-color: #2d9b2d;
+    background-color: #b8ffb8;
+}
+
+.autosave-status.autosave-error {
+    opacity: 1;
+    color: #c0392b;
+    border-color: #c0392b;
+    background-color: #ffe5e5;
+}

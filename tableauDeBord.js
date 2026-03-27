@@ -657,9 +657,10 @@ function attachEventListeners() {
         }
     }
 
-    const btnSaveReunion = document.getElementById('btn-save-reunion');
-    if (btnSaveReunion) {
-        btnSaveReunion.addEventListener('click', saveReunionModifications);
+    const tabReunion = document.getElementById('tab-reunion');
+    if (tabReunion) {
+        tabReunion.addEventListener('input', handleReunionAutoSaveEvent);
+        tabReunion.addEventListener('change', handleReunionAutoSaveEvent);
     }
 
     const btnPrintReunion = document.getElementById('btn-print-reunion');
@@ -3694,6 +3695,57 @@ function makeFieldsEditableReunion(container) {
     });
 }
 
+// ========================================
+// ENREGISTREMENT AUTOMATIQUE - RÉUNION
+// ========================================
+
+let reunionAutoSaveTimer = null;
+
+function handleReunionAutoSaveEvent(e) {
+    const tableIds = ['reunion-odj-table', 'reunion-echeance-table', 'reunion-expired-table'];
+    const inTable = tableIds.some(id => {
+        const el = document.getElementById(id);
+        return el && el.contains(e.target);
+    });
+    if (!inTable) return;
+    scheduleReunionAutoSave();
+}
+
+function scheduleReunionAutoSave() {
+    clearTimeout(reunionAutoSaveTimer);
+    reunionAutoSaveTimer = setTimeout(async () => {
+        showReunionSaveStatus('saving');
+        await saveReunionModifications();
+    }, 800);
+}
+
+function showReunionSaveStatus(state) {
+    const el = document.getElementById('reunion-autosave-status');
+    if (!el) return;
+
+    el.classList.remove('autosave-saving', 'autosave-saved', 'autosave-error');
+    while (el.firstChild) el.removeChild(el.firstChild);
+
+    if (state === 'saving') {
+        el.classList.add('autosave-saving');
+        const spinner = document.createElement('span');
+        spinner.className = 'autosave-spinner';
+        spinner.textContent = '⟳';
+        spinner.setAttribute('aria-hidden', 'true');
+        el.appendChild(spinner);
+        el.appendChild(document.createTextNode('\u00A0Enregistrement\u2026'));
+    } else if (state === 'saved') {
+        el.classList.add('autosave-saved');
+        el.textContent = '✔ Enregistré';
+        setTimeout(() => {
+            el.classList.remove('autosave-saved');
+        }, 3000);
+    } else if (state === 'error') {
+        el.classList.add('autosave-error');
+        el.textContent = '✖ Erreur d\'enregistrement';
+    }
+}
+
 async function saveReunionModifications() {
     try {
         const tables = ['reunion-odj-table', 'reunion-echeance-table', 'reunion-expired-table'];
@@ -3799,7 +3851,6 @@ async function saveReunionModifications() {
             await grist.docApi.applyUserActions(updateActions);
         }
 
-        alert('Modifications enregistrées avec succès !');
         await loadAllTables();
         await removeDuplicateRecords();
         await loadAllTables();
@@ -3812,9 +3863,11 @@ async function saveReunionModifications() {
             reunionDisplayData();
         }
 
+        showReunionSaveStatus('saved');
+
     } catch (error) {
         console.error('Erreur lors de la sauvegarde:', error);
-        alert('Erreur lors de l\'enregistrement des modifications: ' + error.message);
+        showReunionSaveStatus('error');
     }
 }
 
