@@ -3772,7 +3772,8 @@ async function saveReunionModifications() {
                 const cells = row.querySelectorAll('td');
 
                 // Récupérer les valeurs modifiées - colonnes communes aux 3 tableaux
-                const nouveauDossier = cells[0]?.textContent?.trim() || dossierData.Dossier;
+                // ?? (nullish) au lieu de || pour autoriser la sauvegarde d'une valeur vide
+                const nouveauDossier = cells[0]?.textContent?.trim() ?? dossierData.Dossier;
 
                 // Récupérer les porteurs sélectionnés
                 const select = cells[1]?.querySelector('select');
@@ -3789,9 +3790,15 @@ async function saveReunionModifications() {
                     }
                 }
 
-                let actions = cells[2]?.textContent?.trim() || dossierData.Actions_a_mettre_en_uvre_etapes;
-                if (!actions && cells[2] && cells[2].innerHTML) {
-                    actions = cells[2].innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+                // Lire les actions en préservant les sauts de ligne (<br> → \n)
+                // et en autorisant la valeur vide si l'utilisateur a tout effacé
+                let actions = '';
+                if (cells[2]) {
+                    const clone = cells[2].cloneNode(true);
+                    clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+                    actions = clone.textContent.trim();
+                } else {
+                    actions = dossierData.Actions_a_mettre_en_uvre_etapes ?? '';
                 }
 
                 // Récupérer l'échéance selon le type de tableau
