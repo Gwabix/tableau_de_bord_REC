@@ -2091,10 +2091,6 @@ function handleModifyPorteurSelectChange() {
 
     // Afficher tous les dossiers par défaut
     modifyByPorteurAllDossiers();
-
-    // Cacher les boutons jusqu'à la sélection d'un dossier spécifique
-    const buttons = document.getElementById('modify-buttons');
-    if (buttons) buttons.classList.add('hidden');
 }
 
 function populateModifyPorteurEtatFilters() {
