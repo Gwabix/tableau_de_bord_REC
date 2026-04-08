@@ -1673,7 +1673,7 @@ function consultByPorteur() {
     const table = document.createElement('table');
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    ['Date réunion', 'Dossier', 'Porteur(s)', 'Actions', 'Échéance', 'État'].forEach(headerText => {
+    ['Date réunion', 'Dossier', 'Actions', 'Porteur(s)', 'Échéance', 'État'].forEach(headerText => {
         const th = document.createElement('th');
         th.textContent = headerText;
         headerRow.appendChild(th);
@@ -1704,14 +1704,14 @@ function consultByPorteur() {
         tdDossier.addEventListener('click', () => navigateToConsultDossier(dossier.Dossier));
         tr.appendChild(tdDossier);
 
-        const tdPorteurs = document.createElement('td');
-        tdPorteurs.textContent = porteurs;
-        tr.appendChild(tdPorteurs);
-
         const tdActions = document.createElement('td');
         tdActions.textContent = dossier.Actions_a_mettre_en_uvre_etapes || '';
         tdActions.style.whiteSpace = 'pre-wrap';
         tr.appendChild(tdActions);
+
+        const tdPorteurs = document.createElement('td');
+        tdPorteurs.textContent = porteurs;
+        tr.appendChild(tdPorteurs);
 
         const tdEcheance = document.createElement('td');
         tdEcheance.textContent = dossier.Echeance ? formatDate(dossier.Echeance) : '';
