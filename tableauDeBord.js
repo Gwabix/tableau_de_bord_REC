@@ -1691,7 +1691,9 @@ function consultByPorteur() {
             : '';
 
         const tr = document.createElement('tr');
-        if (etatClass) tr.className = etatClass;
+        tr.className = (etatClass ? etatClass + ' ' : '') + 'tr-dossier-link';
+        tr.title = 'Voir l\'historique complet de ce dossier';
+        tr.addEventListener('click', () => navigateToConsultDossier(dossier.Dossier));
 
         const tdDate = document.createElement('td');
         tdDate.textContent = formatDate(dossier.Date_de_la_reunion);
@@ -1699,9 +1701,6 @@ function consultByPorteur() {
 
         const tdDossier = document.createElement('td');
         tdDossier.textContent = dossier.Dossier || '';
-        tdDossier.className = 'td-dossier-link';
-        tdDossier.title = 'Voir l\'historique complet de ce dossier';
-        tdDossier.addEventListener('click', () => navigateToConsultDossier(dossier.Dossier));
         tr.appendChild(tdDossier);
 
         const tdActions = document.createElement('td');

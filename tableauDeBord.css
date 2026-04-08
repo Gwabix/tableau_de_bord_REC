@@ -606,16 +606,13 @@ tr:hover {
     background-color: #f0f9f6;
 }
 
-/* Cellule dossier cliquable (lien vers consultation par dossier) */
-.td-dossier-link {
+/* Ligne cliquable (lien vers consultation par dossier) */
+.tr-dossier-link {
     cursor: pointer;
-    color: #129963;
-    text-decoration: underline;
-    font-weight: 500;
 }
 
-.td-dossier-link:hover {
-    color: #174040;
+.tr-dossier-link:hover td {
+    background-color: #e6f4ef;
 }
 
 /* Filtres */
