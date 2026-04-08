@@ -1478,7 +1478,11 @@ function consultByDossier(dossierName) {
     const resultsDiv = document.getElementById('consult-results');
     if (!resultsDiv) return;
 
-    const dossiers = tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
+    // Résoudre l'ID_Dossier à partir du nom saisi, puis inclure tous les records partageant cet ID
+    const refRecord = tablesData.ODJ.find(odj => odj.Dossier === dossierName && odj.ID_Dossier);
+    const dossiers = refRecord
+        ? tablesData.ODJ.filter(odj => odj.ID_Dossier === refRecord.ID_Dossier)
+        : tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
 
     resultsDiv.innerHTML = '';
 
@@ -1968,7 +1972,11 @@ function modifyByDossier(dossierName) {
     const resultsDiv = document.getElementById('modify-results');
     if (!resultsDiv) return;
 
-    const dossiers = tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
+    // Résoudre l'ID_Dossier à partir du nom saisi, puis inclure tous les records partageant cet ID
+    const refRecord = tablesData.ODJ.find(odj => odj.Dossier === dossierName && odj.ID_Dossier);
+    const dossiers = refRecord
+        ? tablesData.ODJ.filter(odj => odj.ID_Dossier === refRecord.ID_Dossier)
+        : tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
 
     if (dossiers.length === 0) {
         resultsDiv.innerHTML = '<p class="loading">Aucun dossier trouvé</p>';
