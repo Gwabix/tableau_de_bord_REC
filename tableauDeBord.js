@@ -1567,6 +1567,29 @@ function consultByDossier(dossierName) {
     togglePrintButton();
 }
 
+/**
+ * Navigue vers la consultation "par dossier" en sélectionnant le bon radio
+ * et en affichant l'historique complet du dossier demandé.
+ */
+function navigateToConsultDossier(dossierName) {
+    // Activer le radio "par dossier"
+    const radioDossier = document.querySelector('input[name="consult-type"][value="dossier"]');
+    if (radioDossier) {
+        radioDossier.checked = true;
+        radioDossier.dispatchEvent(new Event('change'));
+    }
+
+    // Remplir le champ de saisie
+    const input = document.getElementById('consult-dossier-input');
+    if (input) {
+        input.value = dossierName;
+        toggleClearButton('btn-clear-consult-dossier', dossierName);
+    }
+
+    // Lancer la consultation
+    consultByDossier(dossierName);
+}
+
 function handlePorteurSelectChange() {
     const porteurSelect = document.getElementById('consult-porteur-select');
     if (!porteurSelect) return;
@@ -1670,6 +1693,9 @@ function consultByPorteur() {
 
         const tdDossier = document.createElement('td');
         tdDossier.textContent = dossier.Dossier || '';
+        tdDossier.className = 'td-dossier-link';
+        tdDossier.title = 'Voir l\'historique complet de ce dossier';
+        tdDossier.addEventListener('click', () => navigateToConsultDossier(dossier.Dossier));
         tr.appendChild(tdDossier);
 
         const tdPorteurs = document.createElement('td');
