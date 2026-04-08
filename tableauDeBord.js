@@ -1642,8 +1642,15 @@ function consultByPorteur() {
         return selectedEtats.has(etatName);
     });
 
-    // Trier par état (du pire au meilleur)
-    dossiers = sortByEtat(dossiers);
+    // Trier selon le critère sélectionné
+    const sortType = document.querySelector('input[name="sort-type"]:checked')?.value || 'reunion';
+    if (sortType === 'echeance') {
+        dossiers.sort((a, b) => (a.Echeance || 0) - (b.Echeance || 0));
+    } else if (sortType === 'modification') {
+        dossiers.sort((a, b) => (b.Enregistrement || 0) - (a.Enregistrement || 0));
+    } else {
+        dossiers.sort((a, b) => (b.Date_de_la_reunion || 0) - (a.Date_de_la_reunion || 0));
+    }
 
     const resultsDiv = document.getElementById('consult-results');
     if (!resultsDiv) return;
@@ -1673,7 +1680,7 @@ function consultByPorteur() {
     const table = document.createElement('table');
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    ['Date réunion', 'Dossier', 'Actions', 'Porteur(s)', 'Échéance', 'État'].forEach(headerText => {
+    ['Date réunion', 'Dossier', 'Actions', 'Porteur(s)', 'Échéance', 'État', 'Date de modification'].forEach(headerText => {
         const th = document.createElement('th');
         th.textContent = headerText;
         headerRow.appendChild(th);
@@ -1719,6 +1726,10 @@ function consultByPorteur() {
         const tdEtat = document.createElement('td');
         tdEtat.textContent = etatName;
         tr.appendChild(tdEtat);
+
+        const tdEnregistrement = document.createElement('td');
+        tdEnregistrement.textContent = dossier.Enregistrement ? formatDate(dossier.Enregistrement) : '';
+        tr.appendChild(tdEnregistrement);
 
         tbody.appendChild(tr);
     });
