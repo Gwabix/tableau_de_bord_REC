@@ -3358,13 +3358,8 @@ function reunionDisplayData() {
 
     // Récupérer les dossiers échus non clôturés
     // Inclus : échéance passée, OU échéance non définie mais réunion d'origine antérieure
+    const reunionNum = typeof numDateValue === 'number' ? numDateValue : Number.parseFloat(numDateValue);
     let dossierExpired = tablesData.ODJ.filter(o => {
-        const reunionNum = typeof numDateValue === 'number' ? numDateValue : Number.parseFloat(numDateValue);
-
-        // Statut n'est pas "Clôturé"
-        const etatName = getEtatNameById(o.Etat);
-        if (etatName === "Clôturé") return false;
-
         // Pas de date de réunion ou réunion non antérieure → exclure
         const dateReunionNum = typeof o.Date_de_la_reunion === 'number' ? o.Date_de_la_reunion : Number.parseFloat(o.Date_de_la_reunion);
         if (Number.isNaN(dateReunionNum) || dateReunionNum >= reunionNum) return false;
@@ -3376,8 +3371,10 @@ function reunionDisplayData() {
         const echeanceNum = typeof o.Echeance === 'number' ? o.Echeance : Number.parseFloat(o.Echeance);
         return !Number.isNaN(echeanceNum) && echeanceNum < reunionNum;
     });
-    // Garder uniquement la dernière version de chaque dossier
+    // Garder uniquement la dernière version de chaque dossier (avant de filtrer l'état)
     dossierExpired = getLatestEntriesPerDossier(dossierExpired);
+    // Exclure les dossiers dont le dernier état est "Clôturé"
+    dossierExpired = dossierExpired.filter(d => getEtatNameById(d.Etat) !== "Clôturé");
     // Exclure les dossiers déjà présents dans l'ODJ
     dossierExpired = dossierExpired.filter(d => !odjDossierNames.has(d.Dossier));
 
