@@ -613,6 +613,7 @@ tr:hover {
 
 .tr-dossier-link:hover td {
     background-color: #e6f4ef;
+    color: darkblue;
 }
 
 /* Filtres */
