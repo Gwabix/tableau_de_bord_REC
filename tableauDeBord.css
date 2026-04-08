@@ -616,8 +616,8 @@ tr:hover {
     color: darkblue;
 }
 
-.tr-dossier-link:hover tr {
-    border: 2px solid darkblue;
+.tr-dossier-link:hover {
+    outline: 2px solid darkblue;
 }
 
 /* Filtres */
