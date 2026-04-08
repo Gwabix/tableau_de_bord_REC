@@ -186,6 +186,7 @@ async function loadAllTables() {
             id: id,
             Date_de_la_reunion: odjTable.Date_de_la_reunion[index],
             Dossier: odjTable.Dossier[index] || '',
+            ID_Dossier: odjTable.ID_Dossier[index] || '',
             Porteur_s_: odjTable.Porteur_s_[index] || [],
             Actions_a_mettre_en_uvre_etapes: odjTable.Actions_a_mettre_en_uvre_etapes[index] || '',
             Echeance: odjTable.Echeance[index],
@@ -1581,13 +1582,14 @@ function consultByPorteur() {
         return odj.Porteur_s_.includes(porteurId);
     });
 
+    // Garder uniquement le record le plus récent par dossier (avant de filtrer par état)
+    dossiers = getLatestEntriesPerDossier(dossiers);
+
+    // Filtrer par état sur le vrai état courant du dossier
     dossiers = dossiers.filter(dossier => {
         const etatName = getEtatNameById(dossier.Etat);
         return selectedEtats.has(etatName);
     });
-
-    // Ne garder que le dernier état par dossier
-    dossiers = getLatestEntriesPerDossier(dossiers);
 
     // Trier par état (du pire au meilleur)
     dossiers = sortByEtat(dossiers);
@@ -2116,12 +2118,16 @@ function modifyByPorteurAllDossiers() {
         return odj.Porteur_s_.includes(porteurId);
     });
 
+    // Garder uniquement le record le plus récent par dossier (avant de filtrer par état)
+    dossiers = getLatestEntriesPerDossier(dossiers);
+
+    // Filtrer par état sur le vrai état courant du dossier
     dossiers = dossiers.filter(dossier => {
         const etatName = getEtatNameById(dossier.Etat);
         return selectedEtats.has(etatName);
     });
 
-    // Filtrer les dossiers échus si le toggle est activé
+    // Filtrer les dossiers échus si le toggle est activé (sur l'échéance courante)
     if (hideExpired) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -2134,9 +2140,6 @@ function modifyByPorteurAllDossiers() {
             return echeanceDate >= today;
         });
     }
-
-    // Ne garder que le dernier état par dossier
-    dossiers = getLatestEntriesPerDossier(dossiers);
 
     // Trier par état (du pire au meilleur)
     dossiers = sortByEtat(dossiers);
@@ -3370,6 +3373,8 @@ function reunionDisplayData() {
     let dossierEcheance = tablesData.ODJ.filter(o => o.Echeance == numDateValue && o.Date_de_la_reunion != numDateValue);
     // Garder uniquement la dernière version de chaque dossier
     dossierEcheance = getLatestEntriesPerDossier(dossierEcheance);
+    // Exclure les dossiers dont le dernier état est "Clôturé"
+    dossierEcheance = dossierEcheance.filter(d => getEtatNameById(d.Etat) !== "Clôturé");
     // Exclure les dossiers déjà présents dans l'ODJ
     dossierEcheance = dossierEcheance.filter(d => !odjDossierNames.has(d.Dossier));
 
@@ -3755,6 +3760,10 @@ async function saveReunionModifications() {
         const updateActions = [];
         const newDates = new Set(); // Pour collecter les nouvelles dates à ajouter à l'Agenda
 
+        // Récupérer la date de réunion sélectionnée dans le sélecteur
+        const reunionDateSelect = document.getElementById('reunion-date-select');
+        const reunionDateValue = reunionDateSelect ? Number.parseFloat(reunionDateSelect.value) : null;
+
         for (const tableId of tables) {
             const container = document.getElementById(tableId);
             if (!container || !container.querySelector('table')) continue;
@@ -3822,9 +3831,11 @@ async function saveReunionModifications() {
                     // Supprimer le dossier
                     updateActions.push(['RemoveRecord', 'ODJ', dossierId]);
                 } else if (nouvelEtat) {
-                    // Ajouter une nouvelle ligne avec le nouvel état à la date du jour
+                    // Ajouter une nouvelle ligne avec le nouvel état à la date de la réunion sélectionnée
                     const nouvelEtatId = getEtatIdByName(nouvelEtat);
-                    const dateChangement = Math.floor(Date.now() / 1000);
+                    const dateChangement = (reunionDateValue && !Number.isNaN(reunionDateValue))
+                        ? reunionDateValue
+                        : Math.floor(Date.now() / 1000);
 
                     // Collecter cette date pour l'ajouter à l'Agenda (sécurité OWASP)
                     newDates.add(dateChangement);
