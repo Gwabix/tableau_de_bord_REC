@@ -694,6 +694,12 @@ function attachEventListeners() {
         tabReunion.addEventListener('change', handleReunionAutoSaveEvent);
     }
 
+    const tabModifier = document.getElementById('tab-modifier');
+    if (tabModifier) {
+        tabModifier.addEventListener('focusout', handleModifyPorteurAutoSaveEvent);
+        tabModifier.addEventListener('change', handleModifyPorteurAutoSaveEvent);
+    }
+
     const btnPrintReunion = document.getElementById('btn-print-reunion');
     if (btnPrintReunion) {
         btnPrintReunion.addEventListener('click', printReunionResults);
@@ -2915,7 +2921,7 @@ async function saveModificationsByDossier() {
     }
 }
 
-async function saveModificationsByPorteur() {
+async function saveModificationsByPorteur({ autoSave = false } = {}) {
     const modifyResults = document.getElementById('modify-results');
     if (!modifyResults) return;
 
@@ -2999,7 +3005,8 @@ async function saveModificationsByPorteur() {
     }
 
     // Si des dossiers doivent être supprimés, demander une confirmation unique
-    if (dossiersASupprimer.length > 0) {
+    // (ignoré en mode auto-save : les suppressions nécessitent une confirmation manuelle)
+    if (!autoSave && dossiersASupprimer.length > 0) {
         const listeDossiers = dossiersASupprimer.map(d => `- ${d.nom}`).join('\n');
         const message = `ATTENTION ! Les dossiers suivants vont être supprimés :\n\n${listeDossiers}\n\nÊtes-vous sûr de vouloir confirmer cette action\u00A0?`;
 
@@ -3591,6 +3598,70 @@ function makeFieldsEditableReunion(container) {
             }
         });
     });
+}
+
+// ========================================
+// ENREGISTREMENT AUTOMATIQUE - MODIFIER PAR PORTEUR
+// ========================================
+
+let modifyPorteurAutoSaveTimer = null;
+
+function handleModifyPorteurAutoSaveEvent(e) {
+    // Uniquement en mode porteur "tous les dossiers"
+    if (modifyContext.type !== 'porteur' || modifyContext.secondValue !== null) return;
+
+    const modifyResults = document.getElementById('modify-results');
+    if (!modifyResults || !modifyResults.contains(e.target)) return;
+
+    // Pour les champs contenteditable, on n'enregistre qu'au blur (focusout)
+    if (e.type === 'focusout' && e.target.contentEditable !== 'true') return;
+    if (e.type === 'change' && e.target.contentEditable === 'true') return;
+
+    scheduleModifyPorteurAutoSave();
+}
+
+function scheduleModifyPorteurAutoSave() {
+    clearTimeout(modifyPorteurAutoSaveTimer);
+    modifyPorteurAutoSaveTimer = setTimeout(async () => {
+        showModifyPorteurSaveStatus('saving');
+        try {
+            await saveModificationsByPorteur({ autoSave: true });
+            await loadAllTables();
+            await removeDuplicateRecords();
+            await loadAllTables();
+            populateConsultSelectors();
+            reopenModifyForm();
+            showModifyPorteurSaveStatus('saved');
+        } catch (error) {
+            console.error('Erreur auto-save modifier porteur:', error);
+            showModifyPorteurSaveStatus('error');
+        }
+    }, 800);
+}
+
+function showModifyPorteurSaveStatus(state) {
+    const el = document.getElementById('modify-autosave-status');
+    if (!el) return;
+
+    el.classList.remove('autosave-saving', 'autosave-saved', 'autosave-error');
+    while (el.firstChild) el.removeChild(el.firstChild);
+
+    if (state === 'saving') {
+        el.classList.add('autosave-saving');
+        const spinner = document.createElement('span');
+        spinner.className = 'autosave-spinner';
+        spinner.textContent = '⟳';
+        spinner.setAttribute('aria-hidden', 'true');
+        el.appendChild(spinner);
+        el.appendChild(document.createTextNode('\u00A0Enregistrement\u2026'));
+    } else if (state === 'saved') {
+        el.classList.add('autosave-saved');
+        el.textContent = '✔ Enregistré';
+        setTimeout(() => el.classList.remove('autosave-saved'), 3000);
+    } else if (state === 'error') {
+        el.classList.add('autosave-error');
+        el.textContent = '✖ Erreur d\'enregistrement';
+    }
 }
 
 // ========================================
