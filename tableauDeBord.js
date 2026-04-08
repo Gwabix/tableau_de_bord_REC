@@ -1946,6 +1946,9 @@ function modifyByDate() {
 
     let dossiers = tablesData.ODJ.filter(o => o.Date_de_la_reunion == dateValue);
 
+    // Dédoublonner : un seul record par dossier (le plus récent, par ID_Dossier)
+    dossiers = getLatestEntriesPerDossier(dossiers);
+
     // Trier par état (du pire au meilleur)
     dossiers = sortByEtat(dossiers);
 
