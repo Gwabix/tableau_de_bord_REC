@@ -447,6 +447,24 @@ function generateDossierID() {
     return `${yyyy}${mm}${dd}${hh}${mn}${ss}${ms}`;
 }
 
+/**
+ * Cherche un record du même dossier avec la même Date_de_la_reunion créé aujourd'hui.
+ * Permet un "upsert par jour" : une seule nouvelle ligne par dossier par jour.
+ */
+function findTodayRecord(dossier, targetDateReunion) {
+    const now = new Date();
+    const todayStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000);
+    const todayEnd = todayStart + 86399;
+    const idKey = dossier.ID_Dossier || null;
+    return tablesData.ODJ.find(r => {
+        const sameId = idKey ? r.ID_Dossier === idKey : r.Dossier === dossier.Dossier;
+        if (!sameId) return false;
+        if (r.Date_de_la_reunion !== targetDateReunion) return false;
+        const enr = r.Enregistrement || 0;
+        return enr >= todayStart && enr <= todayEnd;
+    });
+}
+
 function sortByEtat(dossiers) {
     return dossiers.sort((a, b) => {
         const etatA = getEtatNameById(a.Etat);
@@ -2772,8 +2790,11 @@ async function saveModificationsByDate() {
                     Enregistrement: Date.now() / 1000
                 };
 
+                const existingToday = findTodayRecord(dossier, dateChangement);
                 await grist.docApi.applyUserActions([
-                    ['AddRecord', 'ODJ', null, odjData]
+                    existingToday
+                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
+                        : ['AddRecord', 'ODJ', null, odjData]
                 ]);
             }
         } else if (nouvelEtat && !dateChangement) {
@@ -2939,8 +2960,11 @@ async function saveModificationsByDossier() {
                     Enregistrement: Date.now() / 1000
                 };
 
+                const existingToday = findTodayRecord(dossier, dateChangement);
                 await grist.docApi.applyUserActions([
-                    ['AddRecord', 'ODJ', null, odjData]
+                    existingToday
+                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
+                        : ['AddRecord', 'ODJ', null, odjData]
                 ]);
             }
         } else if (nouvelEtat && !dateChangement) {
@@ -3106,6 +3130,7 @@ async function saveModificationsByPorteur() {
                 const odjData = {
                     Date_de_la_reunion: dateChangement,
                     Dossier: nouveauDossier,
+                    ID_Dossier: dossier.ID_Dossier || '',
                     Porteur_s_: ['L', ...nouveauxPorteurs],
                     Actions_a_mettre_en_uvre_etapes: actions,
                     Echeance: nouvelleEcheance,
@@ -3113,8 +3138,11 @@ async function saveModificationsByPorteur() {
                     Enregistrement: Date.now() / 1000
                 };
 
+                const existingToday = findTodayRecord(dossier, dateChangement);
                 await grist.docApi.applyUserActions([
-                    ['AddRecord', 'ODJ', null, odjData]
+                    existingToday
+                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
+                        : ['AddRecord', 'ODJ', null, odjData]
                 ]);
             }
         } else if (nouvelEtat && !dateChangement) {
@@ -3269,8 +3297,11 @@ async function saveModificationsByEcheance() {
                     Enregistrement: Date.now() / 1000
                 };
 
+                const existingToday = findTodayRecord(dossier, dateChangement);
                 await grist.docApi.applyUserActions([
-                    ['AddRecord', 'ODJ', null, odjData]
+                    existingToday
+                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
+                        : ['AddRecord', 'ODJ', null, odjData]
                 ]);
             }
         } else if (nouvelEtat && !dateChangement) {
@@ -3840,16 +3871,30 @@ async function saveReunionModifications() {
                     // Collecter cette date pour l'ajouter à l'Agenda (sécurité OWASP)
                     newDates.add(dateChangement);
 
-                    updateActions.push(['AddRecord', 'ODJ', null, {
-                        Date_de_la_reunion: dateChangement,
-                        Dossier: nouveauDossier || dossierData.Dossier,
-                        ID_Dossier: dossierData.ID_Dossier || '',
-                        Porteur_s_: ['L', ...nouveauxPorteurs],
-                        Actions_a_mettre_en_uvre_etapes: actions,
-                        Echeance: nouvelleEcheance,
-                        Etat: nouvelEtatId,
-                        Enregistrement: Date.now() / 1000
-                    }]);
+                    const existingToday = findTodayRecord(dossierData, dateChangement);
+                    if (existingToday) {
+                        updateActions.push(['UpdateRecord', 'ODJ', existingToday.id, {
+                            Date_de_la_reunion: dateChangement,
+                            Dossier: nouveauDossier || dossierData.Dossier,
+                            ID_Dossier: dossierData.ID_Dossier || '',
+                            Porteur_s_: ['L', ...nouveauxPorteurs],
+                            Actions_a_mettre_en_uvre_etapes: actions,
+                            Echeance: nouvelleEcheance,
+                            Etat: nouvelEtatId,
+                            Enregistrement: Date.now() / 1000
+                        }]);
+                    } else {
+                        updateActions.push(['AddRecord', 'ODJ', null, {
+                            Date_de_la_reunion: dateChangement,
+                            Dossier: nouveauDossier || dossierData.Dossier,
+                            ID_Dossier: dossierData.ID_Dossier || '',
+                            Porteur_s_: ['L', ...nouveauxPorteurs],
+                            Actions_a_mettre_en_uvre_etapes: actions,
+                            Echeance: nouvelleEcheance,
+                            Etat: nouvelEtatId,
+                            Enregistrement: Date.now() / 1000
+                        }]);
+                    }
                 }
 
                 // Toujours mettre à jour la ligne existante
