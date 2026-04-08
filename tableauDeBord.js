@@ -2156,6 +2156,11 @@ function modifyByPorteurAllDossiers() {
     const porteurName = porteurSelect.value;
     if (!porteurName) return;
 
+    // Sauvegarder le contexte (mode tous les dossiers)
+    modifyContext.type = 'porteur';
+    modifyContext.value = porteurName;
+    modifyContext.secondValue = null;
+
     const porteurId = getPersonneIdByName(porteurName);
     const hideExpired = document.getElementById('modify-hide-expired')?.checked || false;
 
@@ -2915,78 +2920,82 @@ async function saveModificationsByPorteur() {
     const modifyResults = document.getElementById('modify-results');
     if (!modifyResults) return;
 
-    const table = modifyResults.querySelector('table tbody');
-    if (!table) return;
-
-    const rows = table.querySelectorAll('tr');
-
     // Récupérer le porteur sélectionné
     const porteurSelect = document.getElementById('modify-porteur-select');
     if (!porteurSelect) return;
 
     const porteurName = porteurSelect.value;
     const porteurId = getPersonneIdByName(porteurName);
-
     if (!porteurName || !porteurId) return;
 
-    // Récupérer le dossier sélectionné
+    // Récupérer le dossier sélectionné (vide = mode tous les dossiers)
     const dossierSelect = document.getElementById('modify-porteur-dossier-select');
     if (!dossierSelect) return;
 
     const dossierName = dossierSelect.value;
-    if (!dossierName) return;
+    const isAllDossiers = !dossierName;
+
+    // Récupérer toutes les lignes (plusieurs tables en mode tous les dossiers)
+    const tables = modifyResults.querySelectorAll('table tbody');
+    if (tables.length === 0) return;
+
+    const now = Date.now() / 1000;
 
     // Première passe : collecter tous les dossiers à supprimer
     const dossiersASupprimer = [];
     const rowsData = [];
 
-    for (let index = 0; index < rows.length; index++) {
-        const row = rows[index];
-        const dossierId = Number.parseInt(row.dataset.dossierId);
+    for (const tableBody of tables) {
+        const rows = tableBody.querySelectorAll('tr');
 
-        // Trouver le dossier correspondant par son ID
-        const dossier = tablesData.ODJ.find(d => d.id === dossierId);
-        if (!dossier) continue;
+        for (const row of rows) {
+            const dossierId = Number.parseInt(row.dataset.dossierId);
 
-        const cells = row.querySelectorAll('td');
-        const etatChangeSelect = row.querySelector('.etat-change-select');
+            // Trouver le dossier correspondant par son ID
+            const dossier = tablesData.ODJ.find(d => d.id === dossierId);
+            if (!dossier) continue;
 
-        // Récupérer les valeurs modifiées (index : 0=Date réunion, 1=Porteur(s), 2=Actions, 3=Échéance, 4=État)
-        const porteurSelectCell = cells[1].querySelector('select');
-        const nouveauxPorteurs = porteurSelectCell ?
-            Array.from(porteurSelectCell.selectedOptions).map(opt => getPersonneIdByName(opt.value)).filter(id => id !== null) :
-            dossier.Porteur_s_;
+            const cells = row.querySelectorAll('td');
+            const etatChangeSelect = row.querySelector('.etat-change-select');
 
-        // Récupérer les actions en nettoyant le texte
-        let actions = cells[2].textContent.trim();
-        if (!actions && cells[2].innerHTML) {
-            actions = cells[2].innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-        }
+            // index : 0=Date réunion, 1=Porteur(s), 2=Actions, 3=Échéance, 4=État
+            const porteurSelectCell = cells[1].querySelector('select');
+            const nouveauxPorteurs = porteurSelectCell ?
+                Array.from(porteurSelectCell.selectedOptions).map(opt => getPersonneIdByName(opt.value)).filter(id => id !== null) :
+                dossier.Porteur_s_;
 
-        const echeanceInput = cells[3].querySelector('input[type="date"]');
-        let nouvelleEcheance = dossier.Echeance;
-        if (echeanceInput && echeanceInput.value) {
-            nouvelleEcheance = Math.floor(new Date(echeanceInput.value).getTime() / 1000);
-        }
+            // Récupérer les actions en nettoyant le texte
+            let actions = cells[2].textContent.trim();
+            if (!actions && cells[2].innerHTML) {
+                actions = cells[2].innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+            }
 
-        const nouveauDossier = dossierName;
+            const echeanceInput = cells[3].querySelector('input[type="date"]');
+            let nouvelleEcheance = dossier.Echeance;
+            if (echeanceInput && echeanceInput.value) {
+                nouvelleEcheance = Math.floor(new Date(echeanceInput.value).getTime() / 1000);
+            }
 
-        // Vérifier s'il y a un changement d'état
-        const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
+            // En mode tous les dossiers, le nom vient des données ; en mode dossier spécifique, du champ
+            const nouveauDossier = isAllDossiers ? dossier.Dossier : dossierName;
 
-        // Stocker les données pour traitement ultérieur
-        rowsData.push({
-            dossier,
-            nouveauDossier,
-            nouveauxPorteurs,
-            actions,
-            nouvelleEcheance,
-            nouvelEtat
-        });
+            // Vérifier s'il y a un changement d'état
+            const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
 
-        // Identifier les dossiers à supprimer
-        if (nouvelEtat === 'Supprimer le dossier') {
-            dossiersASupprimer.push({ id: dossier.id, nom: nouveauDossier });
+            // Stocker les données pour traitement ultérieur
+            rowsData.push({
+                dossier,
+                nouveauDossier,
+                nouveauxPorteurs,
+                actions,
+                nouvelleEcheance,
+                nouvelEtat
+            });
+
+            // Identifier les dossiers à supprimer
+            if (nouvelEtat === 'Supprimer le dossier') {
+                dossiersASupprimer.push({ id: dossier.id, nom: nouveauDossier });
+            }
         }
     }
 
@@ -3017,8 +3026,37 @@ async function saveModificationsByPorteur() {
         // Ignorer les dossiers qui ont été supprimés
         if (nouvelEtat === 'Supprimer le dossier') {
             continue;
+        }
+
+        if (isAllDossiers && nouvelEtat) {
+            // Mode tous les dossiers + changement d'état → enregistrement automatique avec upsert par jour
+            const nouveauEtatId = getEtatIdByName(nouvelEtat);
+            const existingToday = findTodayRecord(dossier, dossier.Date_de_la_reunion);
+
+            const odjData = {
+                Dossier: nouveauDossier,
+                ID_Dossier: dossier.ID_Dossier || '',
+                Porteur_s_: ['L', ...nouveauxPorteurs],
+                Actions_a_mettre_en_uvre_etapes: actions,
+                Echeance: nouvelleEcheance,
+                Etat: nouveauEtatId,
+                Enregistrement: now
+            };
+
+            if (existingToday) {
+                await grist.docApi.applyUserActions([
+                    ['UpdateRecord', 'ODJ', existingToday.id, odjData]
+                ]);
+            } else {
+                await grist.docApi.applyUserActions([
+                    ['AddRecord', 'ODJ', null, {
+                        ...odjData,
+                        Date_de_la_reunion: dossier.Date_de_la_reunion
+                    }]
+                ]);
+            }
         } else if (nouvelEtat) {
-            // Mettre à jour la ligne existante avec le nouvel état
+            // Mode dossier spécifique + changement d'état → mise à jour en place
             const nouveauEtatId = getEtatIdByName(nouvelEtat);
 
             await grist.docApi.applyUserActions([
@@ -3031,7 +3069,7 @@ async function saveModificationsByPorteur() {
                 }]
             ]);
         } else {
-            // Mise à jour de la ligne existante avec toutes les modifications
+            // Pas de changement d'état → mise à jour simple en place
             await grist.docApi.applyUserActions([
                 ['UpdateRecord', 'ODJ', dossier.id, {
                     Dossier: nouveauDossier,
