@@ -1957,7 +1957,7 @@ function modifyByDate() {
         html += `<div class="result-header">Date : ${escapeHtml(formatDate(dateValue))}</div>`;
         html += '</div>';
         html += '<div class="table-container"><table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Date du changement</th></tr></thead>';
+        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
         html += '<tbody>';
 
         dossiers.forEach(dossier => {
@@ -2017,7 +2017,7 @@ function modifyByDossier(dossierName) {
 
     let html = '<div class="section"><h2 class="section-title">Historique du dossier</h2>';
     html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Date du changement</th></tr></thead>';
+    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
     html += '<tbody>';
 
     dossiers.forEach(dossier => {
@@ -2220,8 +2220,8 @@ function modifyByPorteurAllDossiers() {
     const dossiersGroupes = Object.keys(dossiersByName).map(nom => {
         const group = dossiersByName[nom];
 
-        // Obtenir la date représentative du groupe (la plus récente)
-        const dateRepresentative = Math.max(...group.map(d => d.Date_de_la_reunion || 0));
+        // Obtenir la date d'enregistrement représentative du groupe (la plus récente)
+        const dateRepresentative = Math.max(...group.map(d => d.Enregistrement || 0));
 
         return {
             nom: nom,
@@ -2239,7 +2239,7 @@ function modifyByPorteurAllDossiers() {
         html += '<div class="section">';
         html += `<h2 class="section-title">${escapeHtml(groupe.nom)}</h2>`;
         html += '<div class="table-container"><table>';
-        html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Date du changement</th></tr></thead>';
+        html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
         html += '<tbody>';
 
         groupe.dossiers.forEach(dossier => {
@@ -2255,6 +2255,7 @@ function modifyByPorteurAllDossiers() {
             html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
             html += `<td>${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
             html += `<td>${escapeHtml(etatName)}</td>`;
+            html += `<td>${escapeHtml(formatDate(dossier.Enregistrement))}</td>`;
             html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
             html += `<td><input type="date" class="etat-change-date" disabled></td>`;
             html += `</tr>`;
@@ -2308,7 +2309,7 @@ function modifyByPorteurDossier() {
 
     let html = `<div class="section"><h2 class="section-title">Historique du dossier : ${escapeHtml(dossierName)}</h2>`;
     html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Date du changement</th></tr></thead>';
+    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
     html += '<tbody>';
 
     dossiers.forEach(dossier => {
@@ -2373,7 +2374,7 @@ function modifyByEcheance() {
     html += `<div class="result-header">Échéance : ${escapeHtml(formatDate(echeanceValue))}</div>`;
     html += '</div>';
     html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Date réunion</th><th>État</th><th>Changement d\'\u00e9tat</th><th>Date du changement</th></tr></thead>';
+    html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Date réunion</th><th>État</th><th>Changement d\'\u00e9tat</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
     html += '<tbody>';
 
     dossiers.forEach(dossier => {
