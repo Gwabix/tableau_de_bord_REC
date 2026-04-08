@@ -1495,11 +1495,7 @@ function consultByDossier(dossierName) {
         return;
     }
 
-    dossiers.sort((a, b) => {
-        const dateA = a.Date_de_la_reunion ? new Date(a.Date_de_la_reunion) : new Date(0);
-        const dateB = b.Date_de_la_reunion ? new Date(b.Date_de_la_reunion) : new Date(0);
-        return dateB - dateA;
-    });
+    dossiers.sort((a, b) => (b.Enregistrement || 0) - (a.Enregistrement || 0));
 
     const section = document.createElement('div');
     section.className = 'section';
@@ -1515,7 +1511,7 @@ function consultByDossier(dossierName) {
     const table = document.createElement('table');
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    ['Date réunion', 'Porteur(s)', 'Actions', 'Échéance', 'État'].forEach(headerText => {
+    ['Date réunion', 'Porteur(s)', 'Actions', 'Échéance', 'État', 'Date d\'enregistrement'].forEach(headerText => {
         const th = document.createElement('th');
         th.textContent = headerText;
         headerRow.appendChild(th);
@@ -1555,6 +1551,10 @@ function consultByDossier(dossierName) {
         const tdEtat = document.createElement('td');
         tdEtat.textContent = etatName;
         tr.appendChild(tdEtat);
+
+        const tdEnregistrement = document.createElement('td');
+        tdEnregistrement.textContent = dossier.Enregistrement ? formatDate(dossier.Enregistrement) : '';
+        tr.appendChild(tdEnregistrement);
 
         tbody.appendChild(tr);
     });
