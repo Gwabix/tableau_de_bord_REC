@@ -616,6 +616,10 @@ tr:hover {
     color: darkblue;
 }
 
+.tr-dossier-link:hover tr {
+    border: 2px solid darkblue;
+}
+
 /* Filtres */
 .filter-controls {
     display: flex;
