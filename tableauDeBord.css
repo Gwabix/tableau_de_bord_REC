@@ -572,6 +572,13 @@ th {
 td {
     padding: 12px;
     border-bottom: 1px solid #e8e8e8;
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* La colonne Actions (3e colonne) reste alignée à gauche */
+td:nth-child(3) {
+    text-align: left;
 }
 
 /* Styles pour les contrôles dans les cellules éditables */
