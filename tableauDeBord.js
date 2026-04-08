@@ -2017,7 +2017,7 @@ function modifyByDossier(dossierName) {
 
     let html = '<div class="section"><h2 class="section-title">Historique du dossier</h2>';
     html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
+    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
     html += '<tbody>';
 
     dossiers.forEach(dossier => {
@@ -2033,6 +2033,7 @@ function modifyByDossier(dossierName) {
         html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
         html += `<td>${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
         html += `<td>${escapeHtml(etatName)}</td>`;
+        html += `<td>${escapeHtml(formatDate(dossier.Enregistrement))}</td>`;
         html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
         html += `<td><input type="date" class="etat-change-date" disabled></td>`;
         html += `</tr>`;
