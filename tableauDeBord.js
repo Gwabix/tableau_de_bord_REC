@@ -330,7 +330,7 @@ function populateConsultSelectors() {
     // Filtres d'état pour consultation par porteur
     const filterContainer = document.getElementById('filter-etat-checkboxes');
     if (filterContainer) {
-        const etats = getUniqueValues(tablesData.Menus, 'Etat');
+        const etats = getUniqueValues(tablesData.Menus, 'Etat').filter(e => e !== 'Supprimer le dossier');
 
         filterContainer.innerHTML = '';
         etats.forEach(etat => {
@@ -2070,7 +2070,7 @@ function handleModifyPorteurSelectChange() {
 }
 
 function populateModifyPorteurEtatFilters() {
-    const etats = getUniqueValues(tablesData.Menus, 'Etat');
+    const etats = getUniqueValues(tablesData.Menus, 'Etat').filter(e => e !== 'Supprimer le dossier');
     const filterContainer = document.getElementById('modify-filter-etat-checkboxes');
 
     if (!filterContainer) return;
