@@ -434,6 +434,18 @@ function getUniqueValues(data, column) {
     return [...new Set(values)].sort();
 }
 
+function generateDossierID() {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mn = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const ms = String(now.getMilliseconds()).padStart(3, '0');
+    return `${yyyy}${mm}${dd}${hh}${mn}${ss}${ms}`;
+}
+
 function sortByEtat(dossiers) {
     return dossiers.sort((a, b) => {
         const etatA = getEtatNameById(a.Etat);
@@ -470,18 +482,18 @@ function getLatestEntriesPerDossier(dossiers) {
     const dossierMap = new Map();
 
     dossiers.forEach(dossier => {
-        const nom = dossier.Dossier;
-        const existing = dossierMap.get(nom);
+        const key = dossier.ID_Dossier || dossier.Dossier;
+        const existing = dossierMap.get(key);
 
         if (!existing) {
-            dossierMap.set(nom, dossier);
+            dossierMap.set(key, dossier);
         } else {
             // Comparer les timestamps d'enregistrement et garder le plus récent
             const existingTimestamp = existing.Enregistrement || 0;
             const currentTimestamp = dossier.Enregistrement || 0;
 
             if (currentTimestamp > existingTimestamp) {
-                dossierMap.set(nom, dossier);
+                dossierMap.set(key, dossier);
             }
         }
     });
@@ -1255,6 +1267,7 @@ async function validateSaisie() {
                 const odjData = {
                     Date_de_la_reunion: dateReunionTimestamp,
                     Dossier: intitule,
+                    ID_Dossier: generateDossierID(),
                     Porteur_s_: ['L', ...porteurs],
                     Actions_a_mettre_en_uvre_etapes: actions,
                     Echeance: echeance || null,
@@ -2748,10 +2761,12 @@ async function saveModificationsByDate() {
                 const odjData = {
                     Date_de_la_reunion: dateChangement,
                     Dossier: nouveauDossier,
+                    ID_Dossier: dossier.ID_Dossier || '',
                     Porteur_s_: ['L', ...nouveauxPorteurs],
                     Actions_a_mettre_en_uvre_etapes: actions,
                     Echeance: nouvelleEcheance,
-                    Etat: nouveauEtatId
+                    Etat: nouveauEtatId,
+                    Enregistrement: Date.now() / 1000
                 };
 
                 await grist.docApi.applyUserActions([
@@ -2913,6 +2928,7 @@ async function saveModificationsByDossier() {
                 const odjData = {
                     Date_de_la_reunion: dateChangement,
                     Dossier: nouveauDossier,
+                    ID_Dossier: dossier.ID_Dossier || '',
                     Porteur_s_: ['L', ...nouveauxPorteurs],
                     Actions_a_mettre_en_uvre_etapes: actions,
                     Echeance: nouvelleEcheance,
@@ -3242,6 +3258,7 @@ async function saveModificationsByEcheance() {
                 const odjData = {
                     Date_de_la_reunion: dateChangement,
                     Dossier: nouveauDossier,
+                    ID_Dossier: dossier.ID_Dossier || '',
                     Porteur_s_: ['L', ...nouveauxPorteurs],
                     Actions_a_mettre_en_uvre_etapes: actions,
                     Echeance: echeanceValue,
@@ -3815,6 +3832,7 @@ async function saveReunionModifications() {
                     updateActions.push(['AddRecord', 'ODJ', null, {
                         Date_de_la_reunion: dateChangement,
                         Dossier: nouveauDossier || dossierData.Dossier,
+                        ID_Dossier: dossierData.ID_Dossier || '',
                         Porteur_s_: ['L', ...nouveauxPorteurs],
                         Actions_a_mettre_en_uvre_etapes: actions,
                         Echeance: nouvelleEcheance,
