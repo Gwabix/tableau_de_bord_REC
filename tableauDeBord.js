@@ -1,4 +1,4 @@
-// Configuration Grist - Version simplifiée
+﻿// Configuration Grist - Version simplifiée
 let tablesData = {
     Menus: [],
     ODJ: [],
@@ -1957,7 +1957,7 @@ function modifyByDate() {
         html += `<div class="result-header">Date : ${escapeHtml(formatDate(dateValue))}</div>`;
         html += '</div>';
         html += '<div class="table-container"><table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
+        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
         html += '<tbody>';
 
         dossiers.forEach(dossier => {
@@ -1974,7 +1974,6 @@ function modifyByDate() {
             html += `<td contenteditable="false">${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
             html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
             html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `<td><input type="date" class="etat-change-date" disabled></td>`;
             html += `</tr>`;
         });
 
@@ -2017,7 +2016,7 @@ function modifyByDossier(dossierName) {
 
     let html = '<div class="section"><h2 class="section-title">Historique du dossier</h2>';
     html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
+    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th></tr></thead>';
     html += '<tbody>';
 
     dossiers.forEach(dossier => {
@@ -2035,7 +2034,6 @@ function modifyByDossier(dossierName) {
         html += `<td>${escapeHtml(etatName)}</td>`;
         html += `<td>${escapeHtml(formatDate(dossier.Enregistrement))}</td>`;
         html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-        html += `<td><input type="date" class="etat-change-date" disabled></td>`;
         html += `</tr>`;
     });
 
@@ -2240,7 +2238,7 @@ function modifyByPorteurAllDossiers() {
         html += '<div class="section">';
         html += `<h2 class="section-title">${escapeHtml(groupe.nom)}</h2>`;
         html += '<div class="table-container"><table>';
-        html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
+        html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th></tr></thead>';
         html += '<tbody>';
 
         groupe.dossiers.forEach(dossier => {
@@ -2258,7 +2256,6 @@ function modifyByPorteurAllDossiers() {
             html += `<td>${escapeHtml(etatName)}</td>`;
             html += `<td>${escapeHtml(formatDate(dossier.Enregistrement))}</td>`;
             html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `<td><input type="date" class="etat-change-date" disabled></td>`;
             html += `</tr>`;
         });
 
@@ -2310,7 +2307,7 @@ function modifyByPorteurDossier() {
 
     let html = `<div class="section"><h2 class="section-title">Historique du dossier : ${escapeHtml(dossierName)}</h2>`;
     html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
+    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
     html += '<tbody>';
 
     dossiers.forEach(dossier => {
@@ -2327,7 +2324,6 @@ function modifyByPorteurDossier() {
         html += `<td>${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
         html += `<td>${escapeHtml(etatName)}</td>`;
         html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-        html += `<td><input type="date" class="etat-change-date" disabled></td>`;
         html += `</tr>`;
     });
 
@@ -2375,7 +2371,7 @@ function modifyByEcheance() {
     html += `<div class="result-header">Échéance : ${escapeHtml(formatDate(echeanceValue))}</div>`;
     html += '</div>';
     html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Date réunion</th><th>État</th><th>Changement d\'\u00e9tat</th><th>Nouvelle date<br>de réunion</th></tr></thead>';
+    html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Date réunion</th><th>État</th><th>Changement d\'\u00e9tat</th></tr></thead>';
     html += '<tbody>';
 
     dossiers.forEach(dossier => {
@@ -2392,7 +2388,6 @@ function modifyByEcheance() {
         html += `<td contenteditable="false">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
         html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
         html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-        html += `<td><input type="date" class="etat-change-date" disabled></td>`;
         html += `</tr>`;
     });
 
@@ -2541,21 +2536,8 @@ function makeFieldsEditable(container) {
         // Gérer le changement de sélection
         select.addEventListener('change', function () {
             const row = this.closest('tr');
-            const dateInput = row.querySelector('.etat-change-date');
 
-            if (this.value === 'Supprimer le dossier') {
-                // Désactiver le champ date pour la suppression (pas nécessaire)
-                dateInput.disabled = true;
-                dateInput.style.setProperty('background-color', '#a4a4a4', 'important');
-                dateInput.style.color = '#3b3b3bff';
-                dateInput.value = '';
-            } else if (this.value) {
-                dateInput.disabled = false;
-                dateInput.style.setProperty('background-color', '#fff', 'important');
-                if (!dateInput.value) {
-                    dateInput.value = new Date().toISOString().split('T')[0];
-                }
-
+            if (this.value) {
                 // Changer la couleur de la ligne immédiatement
                 const nouvelEtatClass = etatColorMap[this.value] || '';
                 // Retirer toutes les classes d'état existantes
@@ -2565,11 +2547,6 @@ function makeFieldsEditable(container) {
                     row.classList.add(nouvelEtatClass);
                 }
             } else {
-                dateInput.disabled = true;
-                dateInput.style.setProperty('background-color', '#a4a4a4', 'important');
-                dateInput.style.color = '#3b3b3bff';
-                dateInput.value = '';
-
                 // Restaurer la couleur originale si aucun changement
                 const dossierId = row.dataset.dossierId;
                 const dossierData = tablesData.ODJ.find(d => d.id == dossierId);
@@ -2585,12 +2562,6 @@ function makeFieldsEditable(container) {
                 }
             }
         });
-    });
-
-    // Initialiser la couleur de fond des champs de date désactivés
-    container.querySelectorAll('.etat-change-date').forEach(dateInput => {
-        dateInput.style.setProperty('background-color', '#a4a4a4', 'important');
-        dateInput.style.color = '#3b3b3bff';
     });
 }
 
@@ -2722,7 +2693,6 @@ async function saveModificationsByDate() {
 
         const cells = row.querySelectorAll('td');
         const etatChangeSelect = row.querySelector('.etat-change-select');
-        const etatChangeDateInput = row.querySelector('.etat-change-date');
 
         // Récupérer les valeurs modifiées
         const nouveauDossier = cells[0].textContent.trim();
@@ -2745,7 +2715,6 @@ async function saveModificationsByDate() {
 
         // Vérifier s'il y a un changement d'état
         const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
-        const dateChangement = etatChangeDateInput && etatChangeDateInput.value ? Math.floor(new Date(etatChangeDateInput.value).getTime() / 1000) : null;
 
         // Stocker les données pour traitement ultérieur
         rowsData.push({
@@ -2754,8 +2723,7 @@ async function saveModificationsByDate() {
             nouveauxPorteurs,
             actions,
             nouvelleEcheance,
-            nouvelEtat,
-            dateChangement
+            nouvelEtat
         });
 
         // Identifier les dossiers à supprimer
@@ -2786,55 +2754,13 @@ async function saveModificationsByDate() {
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat, dateChangement } = data;
+        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
 
         // Ignorer les dossiers qui ont été supprimés
         if (nouvelEtat === 'Supprimer le dossier') {
             continue;
-        } else if (nouvelEtat && dateChangement) {
-            // Vérifier si la date saisie est identique à la date de réunion existante (comparaison en timestamps)
-            const dateIdentique = dateChangement === dossier.Date_de_la_reunion;
-
-            if (dateIdentique) {
-                // Date identique : mettre à jour la ligne existante avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                await grist.docApi.applyUserActions([
-                    ['UpdateRecord', 'ODJ', dossier.id, {
-                        Dossier: nouveauDossier,
-                        Porteur_s_: ['L', ...nouveauxPorteurs],
-                        Actions_a_mettre_en_uvre_etapes: actions,
-                        Echeance: nouvelleEcheance,
-                        Etat: nouveauEtatId
-                    }]
-                ]);
-            } else {
-                // Date différente : créer une nouvelle ligne avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                // S'assurer que la nouvelle date existe dans la table Agenda (sécurité OWASP)
-                await ensureAgendaDateExists(dateChangement);
-
-                const odjData = {
-                    Date_de_la_reunion: dateChangement,
-                    Dossier: nouveauDossier,
-                    ID_Dossier: dossier.ID_Dossier || '',
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance,
-                    Etat: nouveauEtatId,
-                    Enregistrement: Date.now() / 1000
-                };
-
-                const existingToday = findTodayRecord(dossier, dateChangement);
-                await grist.docApi.applyUserActions([
-                    existingToday
-                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
-                        : ['AddRecord', 'ODJ', null, odjData]
-                ]);
-            }
-        } else if (nouvelEtat && !dateChangement) {
-            // Mettre à jour la ligne existante avec le nouvel état (pas de nouvelle ligne)
+        } else if (nouvelEtat) {
+            // Mettre à jour la ligne existante avec le nouvel état
             const nouveauEtatId = getEtatIdByName(nouvelEtat);
 
             await grist.docApi.applyUserActions([
@@ -2891,7 +2817,6 @@ async function saveModificationsByDossier() {
 
         const cells = row.querySelectorAll('td');
         const etatChangeSelect = row.querySelector('.etat-change-select');
-        const etatChangeDateInput = row.querySelector('.etat-change-date');
 
         // Récupérer les valeurs modifiées (index : 0=Date réunion, 1=Porteur(s), 2=Actions, 3=Échéance, 4=État)
         const porteurSelect = cells[1].querySelector('select');
@@ -2915,7 +2840,6 @@ async function saveModificationsByDossier() {
 
         // Vérifier s'il y a un changement d'état
         const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
-        const dateChangement = etatChangeDateInput && etatChangeDateInput.value ? Math.floor(new Date(etatChangeDateInput.value).getTime() / 1000) : null;
 
         // Stocker les données pour traitement ultérieur
         rowsData.push({
@@ -2924,8 +2848,7 @@ async function saveModificationsByDossier() {
             nouveauxPorteurs,
             actions,
             nouvelleEcheance,
-            nouvelEtat,
-            dateChangement
+            nouvelEtat
         });
 
         // Identifier les dossiers à supprimer
@@ -2956,55 +2879,13 @@ async function saveModificationsByDossier() {
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat, dateChangement } = data;
+        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
 
         // Ignorer les dossiers qui ont été supprimés
         if (nouvelEtat === 'Supprimer le dossier') {
             continue;
-        } else if (nouvelEtat && dateChangement) {
-            // Vérifier si la date saisie est identique à la date de réunion existante (comparaison en timestamps)
-            const dateIdentique = dateChangement === dossier.Date_de_la_reunion;
-
-            if (dateIdentique) {
-                // Date identique : mettre à jour la ligne existante avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                await grist.docApi.applyUserActions([
-                    ['UpdateRecord', 'ODJ', dossier.id, {
-                        Dossier: nouveauDossier,
-                        Porteur_s_: ['L', ...nouveauxPorteurs],
-                        Actions_a_mettre_en_uvre_etapes: actions,
-                        Echeance: nouvelleEcheance,
-                        Etat: nouveauEtatId
-                    }]
-                ]);
-            } else {
-                // Date différente : créer une nouvelle ligne avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                // S'assurer que la nouvelle date existe dans la table Agenda (sécurité OWASP)
-                await ensureAgendaDateExists(dateChangement);
-
-                const odjData = {
-                    Date_de_la_reunion: dateChangement,
-                    Dossier: nouveauDossier,
-                    ID_Dossier: dossier.ID_Dossier || '',
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance,
-                    Etat: nouveauEtatId,
-                    Enregistrement: Date.now() / 1000
-                };
-
-                const existingToday = findTodayRecord(dossier, dateChangement);
-                await grist.docApi.applyUserActions([
-                    existingToday
-                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
-                        : ['AddRecord', 'ODJ', null, odjData]
-                ]);
-            }
-        } else if (nouvelEtat && !dateChangement) {
-            // Mettre à jour la ligne existante avec le nouvel état (pas de nouvelle ligne)
+        } else if (nouvelEtat) {
+            // Mettre à jour la ligne existante avec le nouvel état
             const nouveauEtatId = getEtatIdByName(nouvelEtat);
 
             await grist.docApi.applyUserActions([
@@ -3069,7 +2950,6 @@ async function saveModificationsByPorteur() {
 
         const cells = row.querySelectorAll('td');
         const etatChangeSelect = row.querySelector('.etat-change-select');
-        const etatChangeDateInput = row.querySelector('.etat-change-date');
 
         // Récupérer les valeurs modifiées (index : 0=Date réunion, 1=Porteur(s), 2=Actions, 3=Échéance, 4=État)
         const porteurSelectCell = cells[1].querySelector('select');
@@ -3093,7 +2973,6 @@ async function saveModificationsByPorteur() {
 
         // Vérifier s'il y a un changement d'état
         const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
-        const dateChangement = etatChangeDateInput && etatChangeDateInput.value ? Math.floor(new Date(etatChangeDateInput.value).getTime() / 1000) : null;
 
         // Stocker les données pour traitement ultérieur
         rowsData.push({
@@ -3102,8 +2981,7 @@ async function saveModificationsByPorteur() {
             nouveauxPorteurs,
             actions,
             nouvelleEcheance,
-            nouvelEtat,
-            dateChangement
+            nouvelEtat
         });
 
         // Identifier les dossiers à supprimer
@@ -3134,55 +3012,13 @@ async function saveModificationsByPorteur() {
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat, dateChangement } = data;
+        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
 
         // Ignorer les dossiers qui ont été supprimés
         if (nouvelEtat === 'Supprimer le dossier') {
             continue;
-        } else if (nouvelEtat && dateChangement) {
-            // Vérifier si la date saisie est identique à la date de réunion existante (comparaison en timestamps)
-            const dateIdentique = dateChangement === dossier.Date_de_la_reunion;
-
-            if (dateIdentique) {
-                // Date identique : mettre à jour la ligne existante avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                await grist.docApi.applyUserActions([
-                    ['UpdateRecord', 'ODJ', dossier.id, {
-                        Dossier: nouveauDossier,
-                        Porteur_s_: ['L', ...nouveauxPorteurs],
-                        Actions_a_mettre_en_uvre_etapes: actions,
-                        Echeance: nouvelleEcheance,
-                        Etat: nouveauEtatId
-                    }]
-                ]);
-            } else {
-                // Date différente : créer une nouvelle ligne avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                // S'assurer que la nouvelle date existe dans la table Agenda (sécurité OWASP)
-                await ensureAgendaDateExists(dateChangement);
-
-                const odjData = {
-                    Date_de_la_reunion: dateChangement,
-                    Dossier: nouveauDossier,
-                    ID_Dossier: dossier.ID_Dossier || '',
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance,
-                    Etat: nouveauEtatId,
-                    Enregistrement: Date.now() / 1000
-                };
-
-                const existingToday = findTodayRecord(dossier, dateChangement);
-                await grist.docApi.applyUserActions([
-                    existingToday
-                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
-                        : ['AddRecord', 'ODJ', null, odjData]
-                ]);
-            }
-        } else if (nouvelEtat && !dateChangement) {
-            // Mettre à jour la ligne existante avec le nouvel état (pas de nouvelle ligne)
+        } else if (nouvelEtat) {
+            // Mettre à jour la ligne existante avec le nouvel état
             const nouveauEtatId = getEtatIdByName(nouvelEtat);
 
             await grist.docApi.applyUserActions([
@@ -3237,7 +3073,6 @@ async function saveModificationsByEcheance() {
 
         const cells = row.querySelectorAll('td');
         const etatChangeSelect = row.querySelector('.etat-change-select');
-        const etatChangeDateInput = row.querySelector('.etat-change-date');
 
         // Récupérer les valeurs modifiées
         const nouveauDossier = cells[0].textContent.trim();
@@ -3254,7 +3089,6 @@ async function saveModificationsByEcheance() {
 
         // Vérifier s'il y a un changement d'état
         const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
-        const dateChangement = etatChangeDateInput && etatChangeDateInput.value ? Math.floor(new Date(etatChangeDateInput.value).getTime() / 1000) : null;
 
         // Stocker les données pour traitement ultérieur
         rowsData.push({
@@ -3262,8 +3096,7 @@ async function saveModificationsByEcheance() {
             nouveauDossier,
             nouveauxPorteurs,
             actions,
-            nouvelEtat,
-            dateChangement
+            nouvelEtat
         });
 
         // Identifier les dossiers à supprimer
@@ -3294,54 +3127,13 @@ async function saveModificationsByEcheance() {
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelEtat, dateChangement } = data;
+        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelEtat } = data;
 
         // Ignorer les dossiers qui ont été supprimés
         if (nouvelEtat === 'Supprimer le dossier') {
             continue;
-        } else if (nouvelEtat && dateChangement) {
-            // Vérifier si la date saisie est identique à la date de réunion existante (comparaison en timestamps)
-            const dateIdentique = dateChangement === dossier.Date_de_la_reunion;
-
-            if (dateIdentique) {
-                // Date identique : mettre à jour la ligne existante avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                await grist.docApi.applyUserActions([
-                    ['UpdateRecord', 'ODJ', dossier.id, {
-                        Dossier: nouveauDossier,
-                        Porteur_s_: ['L', ...nouveauxPorteurs],
-                        Actions_a_mettre_en_uvre_etapes: actions,
-                        Etat: nouveauEtatId
-                    }]
-                ]);
-            } else {
-                // Date différente : créer une nouvelle ligne avec le nouvel état
-                const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-                // S'assurer que la nouvelle date existe dans la table Agenda (sécurité OWASP)
-                await ensureAgendaDateExists(dateChangement);
-
-                const odjData = {
-                    Date_de_la_reunion: dateChangement,
-                    Dossier: nouveauDossier,
-                    ID_Dossier: dossier.ID_Dossier || '',
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: echeanceValue,
-                    Etat: nouveauEtatId,
-                    Enregistrement: Date.now() / 1000
-                };
-
-                const existingToday = findTodayRecord(dossier, dateChangement);
-                await grist.docApi.applyUserActions([
-                    existingToday
-                        ? ['UpdateRecord', 'ODJ', existingToday.id, odjData]
-                        : ['AddRecord', 'ODJ', null, odjData]
-                ]);
-            }
-        } else if (nouvelEtat && !dateChangement) {
-            // Mettre à jour la ligne existante avec le nouvel état (pas de nouvelle ligne)
+        } else if (nouvelEtat) {
+            // Mettre à jour la ligne existante avec le nouvel état
             const nouveauEtatId = getEtatIdByName(nouvelEtat);
 
             await grist.docApi.applyUserActions([
