@@ -3400,7 +3400,7 @@ function displayDossierEcheance(dossiers, dateValue) {
         container.innerHTML = html;
         makeFieldsEditableReunion(container);
     } else {
-        html = '<p class="no-results">Aucun dossier à échéance</p>';
+        html = '<p class="no-results">Aucun dossier à échéance.</p>';
         container.innerHTML = html;
     }
 }
@@ -3440,7 +3440,7 @@ function displayExpiredDossiers(dossiers, dateValue) {
         container.innerHTML = html;
         makeFieldsEditableReunion(container);
     } else {
-        html = '<p class="no-results">Aucun dossier échu non clôturé</p>';
+        html = '<p class="no-results">Aucun dossier échu non clôturé.</p>';
         container.innerHTML = html;
     }
 }
