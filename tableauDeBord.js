@@ -1397,7 +1397,7 @@ function consultByDate() {
 
     if (dossiers.length === 0) {
         const p = document.createElement('p');
-        p.className = 'loading';
+        p.className = 'no-results';
         p.textContent = 'Aucune donnée pour cette date';
         resultsDiv.appendChild(p);
         togglePrintButton();
@@ -1494,7 +1494,7 @@ function consultByDossier(dossierName) {
 
     if (dossiers.length === 0) {
         const p = document.createElement('p');
-        p.className = 'loading';
+        p.className = 'no-results';
         p.textContent = 'Aucun dossier trouvé';
         resultsDiv.appendChild(p);
         togglePrintButton();
@@ -1659,7 +1659,7 @@ function consultByPorteur() {
 
     if (dossiers.length === 0) {
         const p = document.createElement('p');
-        p.className = 'loading';
+        p.className = 'no-results';
         p.textContent = 'Aucun dossier trouvé';
         resultsDiv.appendChild(p);
         togglePrintButton();
@@ -1766,7 +1766,7 @@ function consultByEcheance() {
 
     if (dossiers.length === 0) {
         const p = document.createElement('p');
-        p.className = 'loading';
+        p.className = 'no-results';
         p.textContent = 'Aucune donnée pour cette date';
         resultsDiv.appendChild(p);
         togglePrintButton();
@@ -1857,7 +1857,7 @@ function togglePrintButton() {
     const printButtonContainer = document.getElementById('consult-print-button-container');
 
     if (resultsDiv && printButtonContainer) {
-        if (resultsDiv.innerHTML.trim() !== '' && !resultsDiv.innerHTML.includes('loading')) {
+        if (resultsDiv.innerHTML.trim() !== '' && !resultsDiv.innerHTML.includes('no-results')) {
             printButtonContainer.classList.remove('hidden');
         } else {
             printButtonContainer.classList.add('hidden');
@@ -1999,7 +1999,7 @@ function modifyByDate() {
         html += '</tbody></table></div></div>';
     }
 
-    modifyResults.innerHTML = html || '<p class="loading">Aucune donnée pour cette date</p>';
+    modifyResults.innerHTML = html || '<p class="no-results">Aucune donnée pour cette date</p>';
 
     makeFieldsEditable(modifyResults);
 
@@ -2023,7 +2023,7 @@ function modifyByDossier(dossierName) {
         : tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
 
     if (dossiers.length === 0) {
-        resultsDiv.innerHTML = '<p class="loading">Aucun dossier trouvé</p>';
+        resultsDiv.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
         return;
     }
 
@@ -2219,7 +2219,7 @@ function modifyByPorteurAllDossiers() {
     if (!resultsDiv) return;
 
     if (dossiers.length === 0) {
-        resultsDiv.innerHTML = '<p class="loading">Aucun dossier trouvé</p>';
+        resultsDiv.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
         const buttons = document.getElementById('modify-buttons');
         if (buttons) buttons.classList.add('hidden');
         return;
@@ -2315,7 +2315,7 @@ function modifyByPorteurDossier() {
     const dossiers = tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
 
     if (dossiers.length === 0) {
-        resultsDiv.innerHTML = '<p class="loading">Aucun dossier trouvé</p>';
+        resultsDiv.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
         return;
     }
 
@@ -2376,7 +2376,7 @@ function modifyByEcheance() {
     let dossiers = tablesData.ODJ.filter(o => o.Echeance == echeanceValue);
 
     if (dossiers.length === 0) {
-        modifyResults.innerHTML = '<p class="loading">Aucun dossier trouvé</p>';
+        modifyResults.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
         return;
     }
 
@@ -3361,7 +3361,7 @@ function displayODJ(dossiers, dateValue) {
         container.innerHTML = html;
         makeFieldsEditableReunion(container);
     } else {
-        html = '<p class="loading">Aucun dossier pour cette réunion</p>';
+        html = '<p class="no-results">Aucun dossier pour cette réunion</p>';
         container.innerHTML = html;
     }
 }
@@ -3400,7 +3400,7 @@ function displayDossierEcheance(dossiers, dateValue) {
         container.innerHTML = html;
         makeFieldsEditableReunion(container);
     } else {
-        html = '<p class="loading">Aucun dossier à échéance</p>';
+        html = '<p class="no-results">Aucun dossier à échéance</p>';
         container.innerHTML = html;
     }
 }
@@ -3440,7 +3440,7 @@ function displayExpiredDossiers(dossiers, dateValue) {
         container.innerHTML = html;
         makeFieldsEditableReunion(container);
     } else {
-        html = '<p class="loading">Aucun dossier échu non clôturé</p>';
+        html = '<p class="no-results">Aucun dossier échu non clôturé</p>';
         container.innerHTML = html;
     }
 }
@@ -3895,5 +3895,5 @@ if (typeof grist !== 'undefined') {
     initWidget();
 } else {
     console.error('Grist API non disponible');
-    document.body.innerHTML = '<div class="container"><p class="loading">Erreur : Widget doit être utilisé dans Grist</p></div>';
+    document.body.innerHTML = '<div class="container"><p class="no-results">Erreur : Widget doit être utilisé dans Grist</p></div>';
 }

@@ -709,33 +709,11 @@ tr:hover {
     display: none !important;
 }
 
-/* Loading state */
-.loading {
+/* Empty / no results state */
+.no-results {
     text-align: center;
     padding: 40px;
     color: #999;
-}
-
-.loading::after {
-    content: '...';
-    animation: dots 1.5s steps(4, end) infinite;
-}
-
-@keyframes dots {
-
-    0%,
-    20% {
-        content: '.';
-    }
-
-    40% {
-        content: '..';
-    }
-
-    60%,
-    100% {
-        content: '...';
-    }
 }
 
 /* Enregistrement automatique */
