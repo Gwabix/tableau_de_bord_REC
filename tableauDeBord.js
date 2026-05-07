@@ -149,6 +149,11 @@ let modifyContext = {
     secondValue: null
 };
 
+let consultPorteurSortState = {
+    key: 'Date_de_la_reunion',
+    direction: 'desc'
+};
+
 // ========================================
 // INITIALISATION
 // ========================================
@@ -669,10 +674,6 @@ function attachEventListeners() {
     if (consultEcheanceSelect) {
         consultEcheanceSelect.addEventListener('change', consultByEcheance);
     }
-
-    document.querySelectorAll('input[name="sort-type"]').forEach(radio => {
-        radio.addEventListener('change', consultByPorteur);
-    });
 
     document.querySelectorAll('input[name="filter-etat"]').forEach(checkbox => {
         checkbox.addEventListener('change', consultByPorteur);
@@ -1642,15 +1643,7 @@ function consultByPorteur() {
         return selectedEtats.has(etatName);
     });
 
-    // Trier selon le critère sélectionné
-    const sortType = document.querySelector('input[name="sort-type"]:checked')?.value || 'reunion';
-    if (sortType === 'echeance') {
-        dossiers.sort((a, b) => (a.Echeance || 0) - (b.Echeance || 0));
-    } else if (sortType === 'modification') {
-        dossiers.sort((a, b) => (b.Enregistrement || 0) - (a.Enregistrement || 0));
-    } else {
-        dossiers.sort((a, b) => (b.Date_de_la_reunion || 0) - (a.Date_de_la_reunion || 0));
-    }
+    dossiers = sortConsultPorteurDossiers(dossiers, consultPorteurSortState);
 
     const resultsDiv = document.getElementById('consult-results');
     if (!resultsDiv) return;
@@ -1678,11 +1671,46 @@ function consultByPorteur() {
     tableContainer.className = 'table-container';
 
     const table = document.createElement('table');
+    table.className = 'consult-porteur-table';
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    ['Date réunion', 'Dossier', 'Actions', 'Porteur(s)', 'Échéance', 'État', 'Date de modification'].forEach(headerText => {
+    const headerConfig = [
+        { text: 'Date réunion', sortKey: 'Date_de_la_reunion' },
+        { text: 'Dossier', sortKey: 'Dossier' },
+        { text: 'Actions', sortKey: 'Actions_a_mettre_en_uvre_etapes' },
+        { text: 'Porteur(s)', sortKey: 'Porteur_s_' },
+        { text: 'Échéance', sortKey: 'Echeance' },
+        { text: 'État', sortKey: 'Etat' },
+        { text: 'Date de modification', sortKey: 'Enregistrement' }
+    ];
+
+    headerConfig.forEach(({ text, sortKey }) => {
         const th = document.createElement('th');
-        th.textContent = headerText;
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sort-header-button';
+        button.textContent = text;
+        button.setAttribute('aria-label', `Trier par ${text}`);
+
+        const indicator = document.createElement('span');
+        indicator.className = 'sort-indicator';
+        const isActiveSort = consultPorteurSortState.key === sortKey;
+        indicator.textContent = isActiveSort
+            ? (consultPorteurSortState.direction === 'asc' ? ' ^' : ' v')
+            : '';
+        button.appendChild(indicator);
+
+        button.addEventListener('click', () => {
+            updateConsultPorteurSortState(sortKey);
+            consultByPorteur();
+        });
+
+        if (isActiveSort) {
+            th.classList.add('sorted');
+        }
+
+        th.appendChild(button);
         headerRow.appendChild(th);
     });
     thead.appendChild(headerRow);
@@ -1740,6 +1768,65 @@ function consultByPorteur() {
     resultsDiv.appendChild(section);
 
     togglePrintButton();
+}
+
+function updateConsultPorteurSortState(nextKey) {
+    if (consultPorteurSortState.key === nextKey) {
+        consultPorteurSortState.direction = consultPorteurSortState.direction === 'asc' ? 'desc' : 'asc';
+        return;
+    }
+
+    consultPorteurSortState.key = nextKey;
+    consultPorteurSortState.direction = 'asc';
+
+    if (nextKey === 'Date_de_la_reunion' || nextKey === 'Echeance' || nextKey === 'Enregistrement') {
+        consultPorteurSortState.direction = 'desc';
+    }
+}
+
+function getConsultPorteurSortValue(dossier, sortKey) {
+    switch (sortKey) {
+        case 'Date_de_la_reunion':
+            return dossier.Date_de_la_reunion || 0;
+        case 'Echeance':
+            return dossier.Echeance || 0;
+        case 'Enregistrement':
+            return dossier.Enregistrement || 0;
+        case 'Etat': {
+            const etatName = getEtatNameById(dossier.Etat);
+            const sortIndex = etatSortOrder.indexOf(etatName);
+            return sortIndex === -1 ? Number.MAX_SAFE_INTEGER : sortIndex;
+        }
+        case 'Porteur_s_': {
+            if (!Array.isArray(dossier.Porteur_s_)) return '';
+            return dossier.Porteur_s_
+                .map(id => getPersonneNameById(id))
+                .filter(name => name)
+                .join(', ')
+                .toLowerCase();
+        }
+        case 'Dossier':
+            return (dossier.Dossier || '').toLowerCase();
+        case 'Actions_a_mettre_en_uvre_etapes':
+            return (dossier.Actions_a_mettre_en_uvre_etapes || '').toLowerCase();
+        default:
+            return '';
+    }
+}
+
+function sortConsultPorteurDossiers(dossiers, sortState) {
+    const directionFactor = sortState.direction === 'asc' ? 1 : -1;
+
+    return [...dossiers].sort((a, b) => {
+        const valueA = getConsultPorteurSortValue(a, sortState.key);
+        const valueB = getConsultPorteurSortValue(b, sortState.key);
+
+        if (typeof valueA === 'number' && typeof valueB === 'number') {
+            return (valueA - valueB) * directionFactor;
+        }
+
+        return String(valueA).localeCompare(String(valueB), 'fr', { sensitivity: 'base' }) * directionFactor;
+    });
 }
 
 function consultByEcheance() {

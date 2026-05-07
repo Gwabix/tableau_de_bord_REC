@@ -569,6 +569,31 @@ th {
     font-weight: 600;
 }
 
+.consult-porteur-table th.sorted {
+    background-color: #1f5656;
+}
+
+.sort-header-button {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+.sort-header-button:hover,
+.sort-header-button:focus-visible {
+    text-decoration: underline;
+    outline: none;
+}
+
+.sort-indicator {
+    font-weight: 700;
+}
+
 td {
     padding: 12px;
     border-bottom: 1px solid #e8e8e8;
