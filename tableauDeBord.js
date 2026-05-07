@@ -1686,19 +1686,31 @@ function consultByPorteur() {
 
     headerConfig.forEach(({ text, sortKey }) => {
         const th = document.createElement('th');
+        const isActiveSort = consultPorteurSortState.key === sortKey;
 
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'sort-header-button';
-        button.textContent = text;
         button.setAttribute('aria-label', `Trier par ${text}`);
+
+        const label = document.createElement('span');
+        label.textContent = text;
+        button.appendChild(label);
 
         const indicator = document.createElement('span');
         indicator.className = 'sort-indicator';
-        const isActiveSort = consultPorteurSortState.key === sortKey;
-        indicator.textContent = isActiveSort
-            ? (consultPorteurSortState.direction === 'asc' ? ' ^' : ' v')
-            : '';
+        indicator.setAttribute('aria-hidden', 'true');
+
+        const upTriangle = document.createElement('span');
+        upTriangle.className = 'triangle triangle-up';
+        upTriangle.textContent = '▲';
+        indicator.appendChild(upTriangle);
+
+        const downTriangle = document.createElement('span');
+        downTriangle.className = 'triangle triangle-down';
+        downTriangle.textContent = '▼';
+        indicator.appendChild(downTriangle);
+
         button.appendChild(indicator);
 
         button.addEventListener('click', () => {
@@ -1708,6 +1720,15 @@ function consultByPorteur() {
 
         if (isActiveSort) {
             th.classList.add('sorted');
+            if (consultPorteurSortState.direction === 'asc') {
+                th.classList.add('sorted-asc');
+                th.setAttribute('aria-sort', 'ascending');
+            } else {
+                th.classList.add('sorted-desc');
+                th.setAttribute('aria-sort', 'descending');
+            }
+        } else {
+            th.setAttribute('aria-sort', 'none');
         }
 
         th.appendChild(button);
