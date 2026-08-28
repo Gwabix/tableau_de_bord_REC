@@ -333,29 +333,7 @@ function populateConsultSelectors() {
     });
 
     // Filtres d'état pour consultation par porteur
-    const filterContainer = document.getElementById('filter-etat-checkboxes');
-    if (filterContainer) {
-        const etats = getUniqueValues(tablesData.Menus, 'Etat').filter(e => e !== 'Supprimer le dossier');
-
-        filterContainer.innerHTML = '';
-        etats.forEach(etat => {
-            const label = document.createElement('label');
-            label.className = 'checkbox-label';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.name = 'filter-etat';
-            checkbox.value = etat;
-            checkbox.checked = true;
-
-            const span = document.createElement('span');
-            span.textContent = etat;
-
-            label.appendChild(checkbox);
-            label.appendChild(span);
-            filterContainer.appendChild(label);
-        });
-    }
+    buildEtatFilterCheckboxes(document.getElementById('filter-etat-checkboxes'), 'filter-etat');
 }
 
 function getNextMeetingDate() {
@@ -447,6 +425,40 @@ function getUniqueValues(data, column) {
         .map(row => row[column])
         .filter(val => val && val.toString().trim() !== '');
     return [...new Set(values)].sort();
+}
+
+/**
+ * (Re)construit un groupe de cases à cocher pour filtrer par état, avec une
+ * case « Non renseigné » (value '') pour les dossiers sans état saisi.
+ * @param {HTMLElement} container
+ * @param {string} name - attribut name commun des cases
+ */
+function buildEtatFilterCheckboxes(container, name) {
+    if (!container) return;
+
+    const etats = getUniqueValues(tablesData.Menus, 'Etat').filter(e => e !== 'Supprimer le dossier');
+    container.innerHTML = '';
+
+    const addCheckbox = (value, labelText) => {
+        const label = document.createElement('label');
+        label.className = 'checkbox-label';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.name = name;
+        checkbox.value = value;
+        checkbox.checked = true;
+
+        const span = document.createElement('span');
+        span.textContent = labelText;
+
+        label.appendChild(checkbox);
+        label.appendChild(span);
+        container.appendChild(label);
+    };
+
+    etats.forEach(etat => addCheckbox(etat, etat));
+    addCheckbox('', 'Non renseigné');
 }
 
 function generateDossierID() {
@@ -2500,30 +2512,10 @@ async function handleModifyPorteurDossierSelectChange() {
 }
 
 function populateModifyPorteurEtatFilters() {
-    const etats = getUniqueValues(tablesData.Menus, 'Etat').filter(e => e !== 'Supprimer le dossier');
-    const filterContainer = document.getElementById('modify-filter-etat-checkboxes');
-
-    if (!filterContainer) return;
-
-    filterContainer.innerHTML = '';
-
-    etats.forEach(etat => {
-        const label = document.createElement('label');
-        label.className = 'checkbox-label';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.name = 'modify-filter-etat';
-        checkbox.value = etat;
-        checkbox.checked = true;
-
-        const span = document.createElement('span');
-        span.textContent = etat;
-
-        label.appendChild(checkbox);
-        label.appendChild(span);
-        filterContainer.appendChild(label);
-    });
+    buildEtatFilterCheckboxes(
+        document.getElementById('modify-filter-etat-checkboxes'),
+        'modify-filter-etat'
+    );
 }
 
 function modifyByPorteurAllDossiers() {
