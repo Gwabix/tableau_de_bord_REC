@@ -603,7 +603,14 @@ th[data-col="etat"], td[data-col="etat"] {
 th[data-col="echeance"], td[data-col="echeance"],
 th[data-col="date-reunion"], td[data-col="date-reunion"],
 th[data-col="date-enr"], td[data-col="date-enr"] {
-    width: 6.5em;
+    width: 6em;
+}
+
+/* Tableaux éditables : les colonnes de dates modifiables contiennent un
+   sélecteur natif <input type="date">, qui a besoin de plus de place. */
+.dossiers-editable th[data-col="echeance"], .dossiers-editable td[data-col="echeance"],
+.dossiers-editable th[data-col="date-reunion"], .dossiers-editable td[data-col="date-reunion"] {
+    width: 8.75em;
 }
 
 .consult-porteur-table th.sorted {

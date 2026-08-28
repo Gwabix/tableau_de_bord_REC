@@ -581,6 +581,18 @@ function formatDate(dateString) {
     });
 }
 
+/** Format compact « JJ/MM/AAAA » pour les cellules de tableau. */
+function formatDateShort(value) {
+    if (!value && value !== 0) return '';
+    const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
 function getPersonneNameById(id) {
     const personne = tablesData.Menus.find(m => m.id === id);
     return personne ? personne.Personnes : '';
@@ -1636,7 +1648,7 @@ function consultByDate() {
         tr.appendChild(tdActions);
 
         const tdEcheance = document.createElement('td');
-        tdEcheance.textContent = dossier.Echeance ? formatDate(dossier.Echeance) : '';
+        tdEcheance.textContent = formatDateShort(dossier.Echeance);
         tr.appendChild(tdEcheance);
 
         const tdEtat = document.createElement('td');
@@ -1713,7 +1725,7 @@ function consultByDossier(dossierName) {
         if (etatClass) tr.className = etatClass;
 
         const tdDate = document.createElement('td');
-        tdDate.textContent = formatDate(dossier.Date_de_la_reunion);
+        tdDate.textContent = formatDateShort(dossier.Date_de_la_reunion);
         tr.appendChild(tdDate);
 
         const tdPorteurs = document.createElement('td');
@@ -1726,7 +1738,7 @@ function consultByDossier(dossierName) {
         tr.appendChild(tdActions);
 
         const tdEcheance = document.createElement('td');
-        tdEcheance.textContent = dossier.Echeance ? formatDate(dossier.Echeance) : '';
+        tdEcheance.textContent = formatDateShort(dossier.Echeance);
         tr.appendChild(tdEcheance);
 
         const tdEtat = document.createElement('td');
@@ -1734,7 +1746,7 @@ function consultByDossier(dossierName) {
         tr.appendChild(tdEtat);
 
         const tdEnregistrement = document.createElement('td');
-        tdEnregistrement.textContent = dossier.Enregistrement ? formatDate(dossier.Enregistrement) : '';
+        tdEnregistrement.textContent = formatDateShort(dossier.Enregistrement);
         tr.appendChild(tdEnregistrement);
 
         tbody.appendChild(tr);
@@ -1928,7 +1940,7 @@ function consultByPorteur() {
         tr.addEventListener('click', () => navigateToConsultDossier(dossier.Dossier));
 
         const tdDate = document.createElement('td');
-        tdDate.textContent = formatDate(dossier.Date_de_la_reunion);
+        tdDate.textContent = formatDateShort(dossier.Date_de_la_reunion);
         tr.appendChild(tdDate);
 
         const tdDossier = document.createElement('td');
@@ -1945,7 +1957,7 @@ function consultByPorteur() {
         tr.appendChild(tdPorteurs);
 
         const tdEcheance = document.createElement('td');
-        tdEcheance.textContent = dossier.Echeance ? formatDate(dossier.Echeance) : '';
+        tdEcheance.textContent = formatDateShort(dossier.Echeance);
         tr.appendChild(tdEcheance);
 
         const tdEtat = document.createElement('td');
@@ -1953,7 +1965,7 @@ function consultByPorteur() {
         tr.appendChild(tdEtat);
 
         const tdEnregistrement = document.createElement('td');
-        tdEnregistrement.textContent = dossier.Enregistrement ? formatDate(dossier.Enregistrement) : '';
+        tdEnregistrement.textContent = formatDateShort(dossier.Enregistrement);
         tr.appendChild(tdEnregistrement);
 
         tbody.appendChild(tr);
@@ -2115,7 +2127,7 @@ function consultByEcheance() {
         tr.appendChild(tdActions);
 
         const tdDate = document.createElement('td');
-        tdDate.textContent = formatDate(dossier.Date_de_la_reunion);
+        tdDate.textContent = formatDateShort(dossier.Date_de_la_reunion);
         tr.appendChild(tdDate);
 
         const tdEtat = document.createElement('td');
@@ -2278,13 +2290,13 @@ function buildDossierCell(dossier, col) {
         case 'actions':
             return `<td data-col="actions">${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
         case 'echeance':
-            return `<td data-col="echeance">${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
+            return `<td data-col="echeance">${escapeHtml(formatDateShort(dossier.Echeance))}</td>`;
         case 'date-reunion':
-            return `<td data-col="date-reunion">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
+            return `<td data-col="date-reunion">${escapeHtml(formatDateShort(dossier.Date_de_la_reunion))}</td>`;
         case 'etat':
             return `<td data-col="etat">${escapeHtml(getEtatNameById(dossier.Etat))}</td>`;
         case 'date-enr':
-            return `<td data-col="date-enr">${escapeHtml(dossier.Enregistrement ? formatDate(dossier.Enregistrement) : '')}</td>`;
+            return `<td data-col="date-enr">${escapeHtml(formatDateShort(dossier.Enregistrement))}</td>`;
         case 'change':
             return `<td data-col="change"><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
         default:
@@ -2309,7 +2321,7 @@ function buildDossierTable(dossiers, columns) {
             + '</tr>';
     }).join('');
 
-    return `<table>${head}${body}</table>`;
+    return `<table class="dossiers-editable">${head}${body}</table>`;
 }
 
 /**
