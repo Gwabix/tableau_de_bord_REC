@@ -2327,12 +2327,27 @@ async function handleModifyTypeChange(event) {
     modifyContext.secondValue = null;
 }
 
+/** Vide la zone de résultats de l'onglet Modifier (plus rien à éditer). */
+function hideModifyResults() {
+    const resultsDiv = document.getElementById('modify-results');
+    if (resultsDiv) resultsDiv.innerHTML = '';
+    const buttons = document.getElementById('modify-buttons');
+    if (buttons) buttons.classList.add('hidden');
+    modifyContext.type = null;
+    modifyContext.value = null;
+    modifyContext.secondValue = null;
+}
+
 function modifyByDate() {
     const dateSelect = document.getElementById('modify-date-select');
     if (!dateSelect) return;
 
     const date = dateSelect.value;
-    if (!date) return;
+    if (!date) {
+        // Plus aucune date sélectionnable (ex. dernier dossier de la date supprimé)
+        hideModifyResults();
+        return;
+    }
 
     // Sauvegarder le contexte
     modifyContext.type = 'date';
@@ -2389,6 +2404,8 @@ function modifyByDossier(dossierName) {
 
     if (dossiers.length === 0) {
         resultsDiv.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
+        const buttons = document.getElementById('modify-buttons');
+        if (buttons) buttons.classList.add('hidden');
         return;
     }
 
@@ -2627,6 +2644,8 @@ function modifyByPorteurDossier() {
 
     if (dossiers.length === 0) {
         resultsDiv.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
+        const buttons = document.getElementById('modify-buttons');
+        if (buttons) buttons.classList.add('hidden');
         return;
     }
 
@@ -2653,7 +2672,11 @@ function modifyByEcheance() {
     if (!echeanceSelect) return;
 
     const echeance = echeanceSelect.value;
-    if (!echeance) return;
+    if (!echeance) {
+        // Plus aucune échéance sélectionnable (dernier dossier concerné supprimé)
+        hideModifyResults();
+        return;
+    }
 
     // Sauvegarder le contexte
     modifyContext.type = 'echeance';
@@ -2669,6 +2692,8 @@ function modifyByEcheance() {
 
     if (dossiers.length === 0) {
         modifyResults.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
+        const buttons = document.getElementById('modify-buttons');
+        if (buttons) buttons.classList.add('hidden');
         return;
     }
 
