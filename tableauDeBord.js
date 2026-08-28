@@ -2165,6 +2165,121 @@ function clearModifyDossier() {
 // MODIFICATION
 // ========================================
 
+// ----------------------------------------
+// Construction des tableaux de dossiers (onglets Modifier et Réunion)
+//
+// Chaque colonne est identifiée par une clé stable posée sur le <td> via
+// data-col, jamais par sa position. makeFieldsEditable() et les fonctions
+// saveModifications*/saveReunionModifications s'appuient sur cette clé.
+// Clés : dossier | porteurs | actions | echeance | date-reunion | etat
+//        | date-enr | change
+// ----------------------------------------
+
+const DOSSIER_COLUMN_LABELS = {
+    'dossier': 'Dossier',
+    'porteurs': 'Porteur(s)',
+    'actions': 'Actions',
+    'echeance': 'Échéance',
+    'date-reunion': 'Date réunion',
+    'etat': 'État',
+    'date-enr': "Date d'enregistrement",
+    'change': "Changement d'état"
+};
+
+function getDossierPorteursText(dossier) {
+    return Array.isArray(dossier.Porteur_s_) && dossier.Porteur_s_.length > 0
+        ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(Boolean).join(', ')
+        : '';
+}
+
+/**
+ * Génère le HTML d'une cellule selon sa clé de colonne.
+ */
+function buildDossierCell(dossier, col) {
+    switch (col) {
+        case 'dossier':
+            return `<td data-col="dossier">${escapeHtml(dossier.Dossier || '')}</td>`;
+        case 'porteurs':
+            return `<td data-col="porteurs">${escapeHtml(getDossierPorteursText(dossier))}</td>`;
+        case 'actions':
+            return `<td data-col="actions">${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
+        case 'echeance':
+            return `<td data-col="echeance">${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
+        case 'date-reunion':
+            return `<td data-col="date-reunion">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
+        case 'etat':
+            return `<td data-col="etat">${escapeHtml(getEtatNameById(dossier.Etat))}</td>`;
+        case 'date-enr':
+            return `<td data-col="date-enr">${escapeHtml(dossier.Enregistrement ? formatDate(dossier.Enregistrement) : '')}</td>`;
+        case 'change':
+            return `<td data-col="change"><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
+        default:
+            return '<td></td>';
+    }
+}
+
+/**
+ * Génère un tableau complet <table>…</table> pour une liste de dossiers.
+ * @param {object[]} dossiers
+ * @param {string[]} columns - clés de colonnes, dans l'ordre d'affichage
+ */
+function buildDossierTable(dossiers, columns) {
+    const head = '<thead><tr>'
+        + columns.map(col => `<th>${escapeHtml(DOSSIER_COLUMN_LABELS[col] || '')}</th>`).join('')
+        + '</tr></thead>';
+
+    const body = '<tbody>' + dossiers.map(dossier => {
+        const etatClass = etatColorMap[getEtatNameById(dossier.Etat)] || '';
+        return `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`
+            + columns.map(col => buildDossierCell(dossier, col)).join('')
+            + '</tr>';
+    }).join('');
+
+    return `<table>${head}${body}</table>`;
+}
+
+/**
+ * Lit les valeurs éditées d'une ligne de tableau de dossiers.
+ * Le repérage se fait par data-col (jamais par position). Les colonnes absentes
+ * retombent sur les valeurs d'origine du dossier.
+ * @param {HTMLTableRowElement} row
+ * @param {object} dossier - enregistrement ODJ d'origine
+ * @returns {{nomCellule: (string|null), porteurs: number[], actions: string,
+ *            echeance: *, changementEtat: string}}
+ */
+function readEditableRow(row, dossier) {
+    const dossierCell = row.querySelector('[data-col="dossier"]');
+    const nomCellule = dossierCell ? dossierCell.textContent.trim() : null;
+
+    const porteurSelect = row.querySelector('[data-col="porteurs"] select');
+    const porteurs = porteurSelect
+        ? Array.from(porteurSelect.selectedOptions)
+            .map(opt => getPersonneIdByName(opt.value))
+            .filter(id => id !== null)
+        : (Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_.filter(v => v !== 'L') : []);
+
+    const actionsCell = row.querySelector('[data-col="actions"]');
+    let actions;
+    if (actionsCell) {
+        const clone = actionsCell.cloneNode(true);
+        clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        actions = clone.textContent.trim();
+    } else {
+        actions = dossier.Actions_a_mettre_en_uvre_etapes || '';
+    }
+
+    const echeanceInput = row.querySelector('[data-col="echeance"] input[type="date"]');
+    let echeance = dossier.Echeance;
+    if (echeanceInput && echeanceInput.value) {
+        echeance = Math.floor(new Date(echeanceInput.value).getTime() / 1000);
+    }
+
+    const etatChangeSelect = row.querySelector('.etat-change-select');
+    const changementEtat = etatChangeSelect ? etatChangeSelect.value : '';
+
+    return { nomCellule, porteurs, actions, echeance, changementEtat };
+}
+
 function handleModifyTypeChange(event) {
     const type = event.target.value;
 
@@ -2220,28 +2335,9 @@ function modifyByDate() {
         html += `<div class="result-item">`;
         html += `<div class="result-header">Date : ${escapeHtml(formatDate(dateValue))}</div>`;
         html += '</div>';
-        html += '<div class="table-container"><table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
-        html += '<tbody>';
-
-        dossiers.forEach(dossier => {
-            const etatName = getEtatNameById(dossier.Etat);
-            const etatClass = etatColorMap[etatName] || '';
-            const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-                ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-                : '';
-
-            html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-            html += `<td contenteditable="false">${escapeHtml(dossier.Dossier || '')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(porteurs)}</td>`;
-            html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
-            html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `</tr>`;
-        });
-
-        html += '</tbody></table></div></div>';
+        html += '<div class="table-container">';
+        html += buildDossierTable(dossiers, ['dossier', 'porteurs', 'actions', 'echeance', 'etat', 'change']);
+        html += '</div></div>';
     }
 
     modifyResults.innerHTML = html || '<p class="no-results">Aucune donnée pour cette date</p>';
@@ -2279,29 +2375,9 @@ function modifyByDossier(dossierName) {
     });
 
     let html = '<div class="section"><h2 class="section-title">Historique du dossier</h2>';
-    html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th></tr></thead>';
-    html += '<tbody>';
-
-    dossiers.forEach(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
-        const etatClass = etatColorMap[etatName] || '';
-        const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-            ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-            : '';
-
-        html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-        html += `<td>${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
-        html += `<td>${escapeHtml(porteurs)}</td>`;
-        html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-        html += `<td>${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
-        html += `<td>${escapeHtml(etatName)}</td>`;
-        html += `<td>${escapeHtml(formatDate(dossier.Enregistrement))}</td>`;
-        html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-        html += `</tr>`;
-    });
-
-    html += '</tbody></table></div></div>';
+    html += '<div class="table-container">';
+    html += buildDossierTable(dossiers, ['date-reunion', 'porteurs', 'actions', 'echeance', 'etat', 'date-enr', 'change']);
+    html += '</div></div>';
     resultsDiv.innerHTML = html;
 
     makeFieldsEditable(resultsDiv);
@@ -2485,29 +2561,9 @@ function modifyByPorteurAllDossiers() {
     dossiersGroupes.forEach(groupe => {
         html += '<div class="section">';
         html += `<h2 class="section-title">${escapeHtml(groupe.nom)}</h2>`;
-        html += '<div class="table-container"><table>';
-        html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Date d\'enregistrement</th><th>Changement d\'état</th></tr></thead>';
-        html += '<tbody>';
-
-        groupe.dossiers.forEach(dossier => {
-            const etatName = getEtatNameById(dossier.Etat);
-            const etatClass = etatColorMap[etatName] || '';
-            const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-                ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-                : '';
-
-            html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-            html += `<td>${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
-            html += `<td>${escapeHtml(porteurs)}</td>`;
-            html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-            html += `<td>${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
-            html += `<td>${escapeHtml(etatName)}</td>`;
-            html += `<td>${escapeHtml(formatDate(dossier.Enregistrement))}</td>`;
-            html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `</tr>`;
-        });
-
-        html += '</tbody></table></div>';
+        html += '<div class="table-container">';
+        html += buildDossierTable(groupe.dossiers, ['date-reunion', 'porteurs', 'actions', 'echeance', 'etat', 'date-enr', 'change']);
+        html += '</div>';
         html += '</div>';
     });
 
@@ -2554,28 +2610,9 @@ function modifyByPorteurDossier() {
     });
 
     let html = `<div class="section"><h2 class="section-title">Historique du dossier : ${escapeHtml(dossierName)}</h2>`;
-    html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Date réunion</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
-    html += '<tbody>';
-
-    dossiers.forEach(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
-        const etatClass = etatColorMap[etatName] || '';
-        const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-            ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-            : '';
-
-        html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-        html += `<td>${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
-        html += `<td>${escapeHtml(porteurs)}</td>`;
-        html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-        html += `<td>${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
-        html += `<td>${escapeHtml(etatName)}</td>`;
-        html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-        html += `</tr>`;
-    });
-
-    html += '</tbody></table></div></div>';
+    html += '<div class="table-container">';
+    html += buildDossierTable(dossiers, ['date-reunion', 'porteurs', 'actions', 'echeance', 'etat', 'change']);
+    html += '</div></div>';
     resultsDiv.innerHTML = html;
 
     makeFieldsEditable(resultsDiv);
@@ -2618,28 +2655,9 @@ function modifyByEcheance() {
     html += `<div class="result-item">`;
     html += `<div class="result-header">Échéance : ${escapeHtml(formatDate(echeanceValue))}</div>`;
     html += '</div>';
-    html += '<div class="table-container"><table>';
-    html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Date réunion</th><th>État</th><th>Changement d\'\u00e9tat</th></tr></thead>';
-    html += '<tbody>';
-
-    dossiers.forEach(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
-        const etatClass = etatColorMap[etatName] || '';
-        const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-            ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-            : '';
-
-        html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-        html += `<td contenteditable="false">${escapeHtml(dossier.Dossier || '')}</td>`;
-        html += `<td contenteditable="false">${escapeHtml(porteurs)}</td>`;
-        html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-        html += `<td contenteditable="false">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
-        html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
-        html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-        html += `</tr>`;
-    });
-
-    html += '</tbody></table></div></div>';
+    html += '<div class="table-container">';
+    html += buildDossierTable(dossiers, ['dossier', 'porteurs', 'actions', 'date-reunion', 'etat', 'change']);
+    html += '</div></div>';
     modifyResults.innerHTML = html;
 
     makeFieldsEditable(modifyResults);
@@ -2648,53 +2666,93 @@ function modifyByEcheance() {
     if (buttons) buttons.classList.remove('hidden');
 }
 
+const EDITABLE_CELL_STYLE = {
+    border: '1px solid #d9d9d9',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    color: '#000'
+};
+
+const EDITABLE_CONTROL_STYLE = {
+    width: '100%',
+    border: '1px solid #d9d9d9',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)'
+};
+
+function applyStyle(el, style) {
+    Object.assign(el.style, style);
+}
+
+/**
+ * Insère un saut de ligne (<br>) à la position du curseur, sans execCommand.
+ */
+function insertLineBreakAtCaret() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    const br = document.createElement('br');
+    range.deleteContents();
+    range.insertNode(br);
+    range.setStartAfter(br);
+    range.setEndAfter(br);
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+/**
+ * Rend éditables les cellules d'un ou plusieurs tableaux de dossiers.
+ * Le type de chaque cellule est décrit par son attribut `data-col` posé au
+ * moment de la génération (voir buildDossierTable), et non par sa position :
+ *   - data-col="dossier"  → texte éditable
+ *   - data-col="porteurs" → <select multiple>
+ *   - data-col="actions"  → texte éditable multiligne
+ *   - data-col="echeance" → <input type="date">
+ *   - toute autre valeur  → cellule laissée en lecture seule
+ * @param {HTMLElement} container
+ */
 function makeFieldsEditable(container) {
-    // Récupérer la liste des porteurs
     const personnes = getUniqueValues(tablesData.Menus, 'Personnes').filter(p => p !== 'Autre');
 
-    // Rendre les cellules éditables
     container.querySelectorAll('table tbody tr').forEach(row => {
-        const cells = row.querySelectorAll('td');
-        const dossierId = row.dataset.dossierId;
-        const dossierData = tablesData.ODJ.find(d => d.id == dossierId);
+        const dossierData = tablesData.ODJ.find(d => d.id == row.dataset.dossierId);
 
-        cells.forEach((td, index) => {
-            // Index 0: Dossier (texte éditable)
-            if (index === 0) {
+        row.querySelectorAll('td[data-col]').forEach(td => {
+            const col = td.dataset.col;
+
+            if (col === 'dossier') {
                 td.contentEditable = true;
-                td.style.border = '1px solid #d9d9d9';
-                td.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
-                td.style.color = '#000';
-            }
-            // Index 1: Porteur(s) (select multiple)
-            else if (index === 1 && dossierData) {
+                applyStyle(td, EDITABLE_CELL_STYLE);
+            } else if (col === 'actions') {
+                td.contentEditable = true;
+                applyStyle(td, EDITABLE_CELL_STYLE);
+                td.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        insertLineBreakAtCaret();
+                    }
+                });
+            } else if (col === 'porteurs' && dossierData) {
                 const currentPorteurs = dossierData.Porteur_s_ || [];
                 const select = document.createElement('select');
                 select.multiple = true;
-                select.style.width = '100%';
+                applyStyle(select, EDITABLE_CONTROL_STYLE);
                 select.style.minHeight = '60px';
-                select.style.border = '1px solid #d9d9d9';
-                select.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
 
                 personnes.forEach(personne => {
                     const option = document.createElement('option');
                     option.value = personne;
                     option.textContent = personne;
-                    const personneId = getPersonneIdByName(personne);
-                    if (currentPorteurs.includes(personneId)) {
+                    if (currentPorteurs.includes(getPersonneIdByName(personne))) {
                         option.selected = true;
                     }
                     select.appendChild(option);
                 });
 
-                // Permettre la sélection/désélection sans maintenir Ctrl
+                // Sélection/désélection sans maintenir Ctrl
                 select.addEventListener('mousedown', function (e) {
                     e.preventDefault();
-                    const option = e.target;
-                    if (option.tagName === 'OPTION') {
-                        option.selected = !option.selected;
+                    if (e.target.tagName === 'OPTION') {
+                        e.target.selected = !e.target.selected;
                         select.focus();
-                        // Réorganiser les options après la sélection
                         setTimeout(() => reorderSelectOptions(select), 10);
                     }
                 });
@@ -2702,47 +2760,15 @@ function makeFieldsEditable(container) {
                 td.innerHTML = '';
                 td.appendChild(select);
                 td.style.padding = '4px';
-
-                // Réorganiser les options au chargement initial
                 reorderSelectOptions(select);
-            }
-            // Index 2: Actions (texte éditable avec sauts de ligne)
-            else if (index === 2) {
-                td.contentEditable = true;
-                td.style.border = '1px solid #d9d9d9';
-                td.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
-                td.style.color = '#000';
-
-                // Permettre les sauts de ligne avec Entrée (méthode sécurisée)
-                td.addEventListener('keydown', function (event) {
-                    if (event.key === 'Enter') {
-                        event.preventDefault();
-                        const selection = window.getSelection();
-                        if (selection.rangeCount > 0) {
-                            const range = selection.getRangeAt(0);
-                            const br = document.createElement('br');
-                            range.deleteContents();
-                            range.insertNode(br);
-                            range.setStartAfter(br);
-                            range.setEndAfter(br);
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                        }
-                    }
-                });
-            }
-            // Index 3: Échéance (date picker)
-            else if (index === 3 && dossierData) {
+            } else if (col === 'echeance' && dossierData) {
                 const dateInput = document.createElement('input');
                 dateInput.type = 'date';
-                dateInput.style.width = '100%';
-                dateInput.style.border = '1px solid #d9d9d9';
-                dateInput.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+                applyStyle(dateInput, EDITABLE_CONTROL_STYLE);
                 dateInput.style.padding = '4px';
 
                 if (dossierData.Echeance) {
-                    const date = new Date(dossierData.Echeance * 1000);
-                    dateInput.value = date.toISOString().split('T')[0];
+                    dateInput.value = new Date(dossierData.Echeance * 1000).toISOString().split('T')[0];
                 }
 
                 td.innerHTML = '';
@@ -2752,8 +2778,15 @@ function makeFieldsEditable(container) {
         });
     });
 
-    // Peupler les sélecteurs d'état
-    const etats = getUniqueValues(tablesData.Menus, 'Etat');
+    populateEtatChangeSelects(container);
+}
+
+/**
+ * Remplit les <select class="etat-change-select"> et gère la recoloration de
+ * la ligne à la volée quand on choisit un nouvel état.
+ * @param {HTMLElement} container
+ */
+function populateEtatChangeSelects(container) {
     const ordreEtats = [
         "Clôturé",
         "Avance très bien",
@@ -2764,7 +2797,7 @@ function makeFieldsEditable(container) {
         "Supprimer le dossier"
     ];
 
-    const etatsTries = etats.sort((a, b) => {
+    const etatsTries = getUniqueValues(tablesData.Menus, 'Etat').sort((a, b) => {
         const indexA = ordreEtats.indexOf(a);
         const indexB = ordreEtats.indexOf(b);
         if (indexA !== -1 && indexB !== -1) return indexA - indexB;
@@ -2781,34 +2814,22 @@ function makeFieldsEditable(container) {
             select.appendChild(option);
         });
 
-        // Gérer le changement de sélection
         select.addEventListener('change', function () {
             const row = this.closest('tr');
+            if (!row) return;
 
-            if (this.value) {
-                // Changer la couleur de la ligne immédiatement
-                const nouvelEtatClass = etatColorMap[this.value] || '';
-                // Retirer toutes les classes d'état existantes
-                Object.values(etatColorMap).forEach(cls => row.classList.remove(cls));
-                // Ajouter la nouvelle classe d'état
-                if (nouvelEtatClass) {
-                    row.classList.add(nouvelEtatClass);
-                }
-            } else {
-                // Restaurer la couleur originale si aucun changement
-                const dossierId = row.dataset.dossierId;
-                const dossierData = tablesData.ODJ.find(d => d.id == dossierId);
-                if (dossierData) {
-                    const etatOriginal = getEtatNameById(dossierData.Etat);
-                    const etatOriginalClass = etatColorMap[etatOriginal] || '';
-                    // Retirer toutes les classes d'état existantes
-                    Object.values(etatColorMap).forEach(cls => row.classList.remove(cls));
-                    // Ajouter la classe d'état originale
-                    if (etatOriginalClass) {
-                        row.classList.add(etatOriginalClass);
-                    }
-                }
+            // Retirer toutes les classes d'état, puis appliquer la bonne couleur
+            Object.values(etatColorMap).forEach(cls => row.classList.remove(cls));
+
+            let etatName = this.value;
+            if (!etatName) {
+                // Aucun changement : restaurer l'état d'origine du dossier
+                const dossierData = tablesData.ODJ.find(d => d.id == row.dataset.dossierId);
+                etatName = dossierData ? getEtatNameById(dossierData.Etat) : '';
             }
+
+            const cls = etatColorMap[etatName];
+            if (cls) row.classList.add(cls);
         });
     });
 }
@@ -2943,30 +2964,12 @@ async function saveModificationsByDate() {
         const dossier = tablesData.ODJ.find(d => d.id === dossierId);
         if (!dossier) continue;
 
-        const cells = row.querySelectorAll('td');
-        const etatChangeSelect = row.querySelector('.etat-change-select');
-
-        // Récupérer les valeurs modifiées
-        const nouveauDossier = cells[0].textContent.trim();
-        const porteurSelect = cells[1].querySelector('select');
-        const nouveauxPorteurs = porteurSelect ?
-            Array.from(porteurSelect.selectedOptions).map(opt => getPersonneIdByName(opt.value)).filter(id => id !== null) :
-            dossier.Porteur_s_;
-
-        // Récupérer les actions en nettoyant le texte
-        let actions = cells[2].textContent.trim();
-        if (!actions && cells[2].innerHTML) {
-            actions = cells[2].innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-        }
-
-        const echeanceInput = cells[3].querySelector('input[type="date"]');
-        let nouvelleEcheance = dossier.Echeance;
-        if (echeanceInput && echeanceInput.value) {
-            nouvelleEcheance = Math.floor(new Date(echeanceInput.value).getTime() / 1000);
-        }
-
-        // Vérifier s'il y a un changement d'état
-        const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
+        const edited = readEditableRow(row, dossier);
+        const nouveauDossier = edited.nomCellule;
+        const nouveauxPorteurs = edited.porteurs;
+        const actions = edited.actions;
+        const nouvelleEcheance = edited.echeance;
+        const nouvelEtat = edited.changementEtat;
 
         // Stocker les données pour traitement ultérieur
         rowsData.push({
@@ -3051,31 +3054,12 @@ async function saveModificationsByDossier() {
         const dossier = tablesData.ODJ.find(d => d.id === dossierId);
         if (!dossier) continue;
 
-        const cells = row.querySelectorAll('td');
-        const etatChangeSelect = row.querySelector('.etat-change-select');
-
-        // Récupérer les valeurs modifiées (index : 0=Date réunion, 1=Porteur(s), 2=Actions, 3=Échéance, 4=État)
-        const porteurSelect = cells[1].querySelector('select');
-        const nouveauxPorteurs = porteurSelect ?
-            Array.from(porteurSelect.selectedOptions).map(opt => getPersonneIdByName(opt.value)).filter(id => id !== null) :
-            dossier.Porteur_s_;
-
-        // Récupérer les actions en nettoyant le texte
-        let actions = cells[2].textContent.trim();
-        if (!actions && cells[2].innerHTML) {
-            actions = cells[2].innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-        }
-
-        const echeanceInput = cells[3].querySelector('input[type="date"]');
-        let nouvelleEcheance = dossier.Echeance;
-        if (echeanceInput && echeanceInput.value) {
-            nouvelleEcheance = Math.floor(new Date(echeanceInput.value).getTime() / 1000);
-        }
-
+        const edited = readEditableRow(row, dossier);
         const nouveauDossier = dossierName;
-
-        // Vérifier s'il y a un changement d'état
-        const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
+        const nouveauxPorteurs = edited.porteurs;
+        const actions = edited.actions;
+        const nouvelleEcheance = edited.echeance;
+        const nouvelEtat = edited.changementEtat;
 
         // Stocker les données pour traitement ultérieur
         rowsData.push({
@@ -3170,32 +3154,12 @@ async function saveModificationsByPorteur({ autoSave = false } = {}) {
             const dossier = tablesData.ODJ.find(d => d.id === dossierId);
             if (!dossier) continue;
 
-            const cells = row.querySelectorAll('td');
-            const etatChangeSelect = row.querySelector('.etat-change-select');
-
-            // index : 0=Date réunion, 1=Porteur(s), 2=Actions, 3=Échéance, 4=État
-            const porteurSelectCell = cells[1].querySelector('select');
-            const nouveauxPorteurs = porteurSelectCell ?
-                Array.from(porteurSelectCell.selectedOptions).map(opt => getPersonneIdByName(opt.value)).filter(id => id !== null) :
-                dossier.Porteur_s_;
-
-            // Récupérer les actions en nettoyant le texte
-            let actions = cells[2].textContent.trim();
-            if (!actions && cells[2].innerHTML) {
-                actions = cells[2].innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-            }
-
-            const echeanceInput = cells[3].querySelector('input[type="date"]');
-            let nouvelleEcheance = dossier.Echeance;
-            if (echeanceInput && echeanceInput.value) {
-                nouvelleEcheance = Math.floor(new Date(echeanceInput.value).getTime() / 1000);
-            }
-
-            // En mode tous les dossiers, le nom vient des données ; en mode dossier spécifique, du champ
+            const edited = readEditableRow(row, dossier);
             const nouveauDossier = isAllDossiers ? dossier.Dossier : dossierName;
-
-            // Vérifier s'il y a un changement d'état
-            const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
+            const nouveauxPorteurs = edited.porteurs;
+            const actions = edited.actions;
+            const nouvelleEcheance = edited.echeance;
+            const nouvelEtat = edited.changementEtat;
 
             // Stocker les données pour traitement ultérieur
             rowsData.push({
@@ -3308,24 +3272,11 @@ async function saveModificationsByEcheance() {
         const dossier = tablesData.ODJ.find(d => d.id === dossierId);
         if (!dossier) continue;
 
-        const cells = row.querySelectorAll('td');
-        const etatChangeSelect = row.querySelector('.etat-change-select');
-
-        // Récupérer les valeurs modifiées
-        const nouveauDossier = cells[0].textContent.trim();
-        const porteurSelect = cells[1].querySelector('select');
-        const nouveauxPorteurs = porteurSelect ?
-            Array.from(porteurSelect.selectedOptions).map(opt => getPersonneIdByName(opt.value)).filter(id => id !== null) :
-            dossier.Porteur_s_;
-
-        // Récupérer les actions en nettoyant le texte
-        let actions = cells[2].textContent.trim();
-        if (!actions && cells[2].innerHTML) {
-            actions = cells[2].innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-        }
-
-        // Vérifier s'il y a un changement d'état
-        const nouvelEtat = etatChangeSelect ? etatChangeSelect.value : '';
+        const edited = readEditableRow(row, dossier);
+        const nouveauDossier = edited.nomCellule;
+        const nouveauxPorteurs = edited.porteurs;
+        const actions = edited.actions;
+        const nouvelEtat = edited.changementEtat;
 
         // Stocker les données pour traitement ultérieur
         rowsData.push({
@@ -3503,30 +3454,9 @@ function displayODJ(dossiers, dateValue) {
 
     let html = '';
     if (dossiers.length > 0) {
-        html += '<table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
-        html += '<tbody>';
-
-        dossiers.forEach(dossier => {
-            const etatName = getEtatNameById(dossier.Etat);
-            const etatClass = etatColorMap[etatName] || '';
-            const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-                ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-                : '';
-
-            html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-            html += `<td contenteditable="false">${escapeHtml(dossier.Dossier || '')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(porteurs)}</td>`;
-            html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
-            html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `</tr>`;
-        });
-
-        html += '</tbody></table>';
+        html += buildDossierTable(dossiers, ['dossier', 'porteurs', 'actions', 'echeance', 'etat', 'change']);
         container.innerHTML = html;
-        makeFieldsEditableReunion(container);
+        makeFieldsEditable(container);
     } else {
         html = '<p class="no-results">Aucun dossier pour cette réunion</p>';
         container.innerHTML = html;
@@ -3542,30 +3472,9 @@ function displayDossierEcheance(dossiers, dateValue) {
 
     let html = '';
     if (dossiers.length > 0) {
-        html += '<table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>État</th><th>Changement d\'état</th></tr></thead>';
-        html += '<tbody>';
-
-        dossiers.forEach(dossier => {
-            const etatName = getEtatNameById(dossier.Etat);
-            const etatClass = etatColorMap[etatName] || '';
-            const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-                ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-                : '';
-
-            html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-            html += `<td contenteditable="false">${escapeHtml(dossier.Dossier || '')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(porteurs)}</td>`;
-            html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
-            html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `</tr>`;
-        });
-
-        html += '</tbody></table>';
+        html += buildDossierTable(dossiers, ['dossier', 'porteurs', 'actions', 'date-reunion', 'etat', 'change']);
         container.innerHTML = html;
-        makeFieldsEditableReunion(container);
+        makeFieldsEditable(container);
     } else {
         html = '<p class="no-results">Aucun dossier à échéance.</p>';
         container.innerHTML = html;
@@ -3581,31 +3490,9 @@ function displayExpiredDossiers(dossiers, dateValue) {
 
     let html = '';
     if (dossiers.length > 0) {
-        html += '<table>';
-        html += '<thead><tr><th>Dossier</th><th>Porteur(s)</th><th>Actions</th><th>Échéance</th><th>Date réunion</th><th>État</th><th>Changement d\'état</th></tr></thead>';
-        html += '<tbody>';
-
-        dossiers.forEach(dossier => {
-            const etatName = getEtatNameById(dossier.Etat);
-            const etatClass = etatColorMap[etatName] || '';
-            const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-                ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-                : '';
-
-            html += `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`;
-            html += `<td contenteditable="false">${escapeHtml(dossier.Dossier || '')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(porteurs)}</td>`;
-            html += `<td>${escapeHtml(dossier.Actions_a_mettre_en_uvre_etapes || '').replace(/\n/g, '<br>')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(dossier.Echeance ? formatDate(dossier.Echeance) : '')}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(formatDate(dossier.Date_de_la_reunion))}</td>`;
-            html += `<td contenteditable="false">${escapeHtml(etatName)}</td>`;
-            html += `<td><select class="etat-change-select"><option value="">-- Aucun changement --</option></select></td>`;
-            html += `</tr>`;
-        });
-
-        html += '</tbody></table>';
+        html += buildDossierTable(dossiers, ['dossier', 'porteurs', 'actions', 'echeance', 'date-reunion', 'etat', 'change']);
         container.innerHTML = html;
-        makeFieldsEditableReunion(container);
+        makeFieldsEditable(container);
     } else {
         html = '<p class="no-results">Aucun dossier échu non clôturé.</p>';
         container.innerHTML = html;
@@ -3621,160 +3508,6 @@ function clearReunionDisplay() {
     if (printContainer) {
         printContainer.classList.add('hidden');
     }
-}
-
-function makeFieldsEditableReunion(container) {
-    // Récupérer la liste des porteurs
-    const personnes = getUniqueValues(tablesData.Menus, 'Personnes').filter(p => p !== 'Autre');
-
-    // Rendre les cellules éditables
-    container.querySelectorAll('table tbody tr').forEach(row => {
-        const cells = row.querySelectorAll('td');
-        const dossierId = row.dataset.dossierId;
-        const dossierData = tablesData.ODJ.find(d => d.id == dossierId);
-
-        cells.forEach((td, index) => {
-            // Index 0: Dossier (texte éditable)
-            if (index === 0) {
-                td.contentEditable = true;
-                td.style.border = '1px solid #d9d9d9';
-                td.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
-                td.style.color = '#000';
-            }
-            // Index 1: Porteur(s) (select multiple)
-            else if (index === 1 && dossierData) {
-                const currentPorteurs = dossierData.Porteur_s_ || [];
-                const select = document.createElement('select');
-                select.multiple = true;
-                select.style.width = '100%';
-                select.style.minHeight = '60px';
-                select.style.border = '1px solid #d9d9d9';
-                select.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-
-                personnes.forEach(personne => {
-                    const option = document.createElement('option');
-                    option.value = personne;
-                    option.textContent = personne;
-                    const personneId = getPersonneIdByName(personne);
-                    if (currentPorteurs.includes(personneId)) {
-                        option.selected = true;
-                    }
-                    select.appendChild(option);
-                });
-
-                // Permettre la sélection/désélection sans maintenir Ctrl
-                select.addEventListener('mousedown', function (e) {
-                    e.preventDefault();
-                    const option = e.target;
-                    if (option.tagName === 'OPTION') {
-                        option.selected = !option.selected;
-                        select.focus();
-                        // Réorganiser les options après la sélection
-                        setTimeout(() => reorderSelectOptions(select), 10);
-                    }
-                });
-
-                td.innerHTML = '';
-                td.appendChild(select);
-                td.style.padding = '4px';
-
-                // Réorganiser les options au chargement initial
-                reorderSelectOptions(select);
-            }
-            // Index 2: Actions (texte éditable avec sauts de ligne)
-            else if (index === 2) {
-                td.contentEditable = true;
-                td.style.border = '1px solid #d9d9d9';
-                td.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
-                td.style.color = '#000';
-
-                // Permettre les sauts de ligne avec Entrée (méthode sécurisée)
-                td.addEventListener('keydown', function (event) {
-                    if (event.key === 'Enter') {
-                        event.preventDefault();
-                        const selection = window.getSelection();
-                        if (selection.rangeCount > 0) {
-                            const range = selection.getRangeAt(0);
-                            const br = document.createElement('br');
-                            range.deleteContents();
-                            range.insertNode(br);
-                            range.setStartAfter(br);
-                            range.setEndAfter(br);
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                        }
-                    }
-                });
-            }
-            // Index 3: Échéance (date picker)
-            else if (index === 3 && dossierData) {
-                const dateInput = document.createElement('input');
-                dateInput.type = 'date';
-                dateInput.style.width = '100%';
-                dateInput.style.border = '1px solid #d9d9d9';
-                dateInput.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-                dateInput.style.padding = '4px';
-
-                if (dossierData.Echeance) {
-                    const date = new Date(dossierData.Echeance * 1000);
-                    dateInput.value = date.toISOString().split('T')[0];
-                }
-
-                td.innerHTML = '';
-                td.appendChild(dateInput);
-                td.style.padding = '4px';
-            }
-        });
-    });
-
-    // Peupler les sélecteurs d'état
-    const etats = getUniqueValues(tablesData.Menus, 'Etat');
-    const ordreEtats = [
-        "Clôturé",
-        "Avance très bien",
-        "Avance bien",
-        "RAS",
-        "Des tensions",
-        "Forte difficulté, blocage",
-        "Supprimer le dossier"
-    ];
-
-    const etatsTries = etats.sort((a, b) => {
-        const indexA = ordreEtats.indexOf(a);
-        const indexB = ordreEtats.indexOf(b);
-        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-        if (indexA !== -1) return -1;
-        if (indexB !== -1) return 1;
-        return a.localeCompare(b);
-    });
-
-    container.querySelectorAll('.etat-change-select').forEach(select => {
-        etatsTries.forEach(etat => {
-            const option = document.createElement('option');
-            option.value = etat;
-            option.textContent = etat;
-            select.appendChild(option);
-        });
-
-        select.addEventListener('change', function () {
-            const tr = this.closest('tr');
-
-            if (this.value && this.value !== 'Supprimer le dossier') {
-                // Changer la couleur de la ligne selon le nouvel état sélectionné
-                const etatClass = etatColorMap[this.value] || '';
-                tr.className = etatClass;
-            } else if (!this.value) {
-                // Restaurer la couleur d'origine
-                const dossierId = tr.dataset.dossierId;
-                const dossierData = tablesData.ODJ.find(d => d.id == dossierId);
-                if (dossierData) {
-                    const etatName = getEtatNameById(dossierData.Etat);
-                    const etatClass = etatColorMap[etatName] || '';
-                    tr.className = etatClass;
-                }
-            }
-        });
-    });
 }
 
 // ========================================
@@ -3926,57 +3659,16 @@ async function saveReunionModifications() {
                 const dossierData = tablesData.ODJ.find(d => d.id === dossierId);
                 if (!dossierData) continue;
 
-                const cells = row.querySelectorAll('td');
-
-                // Récupérer les valeurs modifiées - colonnes communes aux 3 tableaux
-                // ?? (nullish) au lieu de || pour autoriser la sauvegarde d'une valeur vide
-                const nouveauDossier = cells[0]?.textContent?.trim() ?? dossierData.Dossier;
-
-                // Récupérer les porteurs sélectionnés
-                const select = cells[1]?.querySelector('select');
-                const nouveauxPorteurs = [];
-                if (select) {
-                    Array.from(select.selectedOptions).forEach(option => {
-                        const id = getPersonneIdByName(option.value);
-                        if (id) nouveauxPorteurs.push(id);
-                    });
-                } else {
-                    // Si pas de select (ne devrait pas arriver), garder les porteurs existants
-                    if (dossierData.Porteur_s_) {
-                        nouveauxPorteurs.push(...dossierData.Porteur_s_);
-                    }
-                }
-
-                // Lire les actions en préservant les sauts de ligne (<br> → \n)
-                // et en autorisant la valeur vide si l'utilisateur a tout effacé
-                let actions = '';
-                if (cells[2]) {
-                    const clone = cells[2].cloneNode(true);
-                    clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-                    actions = clone.textContent.trim();
-                } else {
-                    actions = dossierData.Actions_a_mettre_en_uvre_etapes ?? '';
-                }
-
-                // Récupérer l'échéance selon le type de tableau
-                // ODJ: [Dossier, Porteurs, Actions, Échéance, État, Change, Date] -> Échéance à index 3
-                // Echeance: [Dossier, Porteurs, Actions, Date réunion, État, Change, Date] -> pas d'échéance éditable
-                // Expired: [Dossier, Porteurs, Actions, Échéance, Date réunion, État, Change, Date] -> Échéance à index 3
-                let nouvelleEcheance = dossierData.Echeance;
-
-                if (tableId === 'reunion-odj-table' || tableId === 'reunion-expired-table') {
-                    // Ces tableaux ont une colonne Échéance à l'index 3
-                    const dateInput = cells[3]?.querySelector('input[type="date"]');
-                    if (dateInput && dateInput.value) {
-                        const dateObj = new Date(dateInput.value);
-                        nouvelleEcheance = Math.floor(dateObj.getTime() / 1000);
-                    }
-                }
-                // Pour reunion-echeance-table, on garde l'échéance existante car elle n'est pas affichée/éditable
-
-                // Vérifier le changement d'état
-                const etatSelect = row.querySelector('.etat-change-select');
-                const nouvelEtat = etatSelect ? etatSelect.value : '';
+                // Lecture des valeurs éditées, repérage par data-col.
+                // La cellule "echeance" n'existe que pour reunion-odj-table et
+                // reunion-expired-table ; sinon readEditableRow retombe sur
+                // l'échéance d'origine du dossier.
+                const edited = readEditableRow(row, dossierData);
+                const nouveauDossier = edited.nomCellule ?? dossierData.Dossier;
+                const nouveauxPorteurs = edited.porteurs;
+                const actions = edited.actions;
+                const nouvelleEcheance = edited.echeance;
+                const nouvelEtat = edited.changementEtat;
 
                 if (nouvelEtat === 'Supprimer le dossier') {
                     // Collecté pour suppression groupée après confirmation (tout l'historique)
