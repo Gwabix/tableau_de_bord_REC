@@ -610,7 +610,7 @@ th[data-col="date-enr"], td[data-col="date-enr"] {
    sélecteur natif <input type="date">, qui a besoin de plus de place. */
 .dossiers-editable th[data-col="echeance"], .dossiers-editable td[data-col="echeance"],
 .dossiers-editable th[data-col="date-reunion"], .dossiers-editable td[data-col="date-reunion"] {
-    width: 8.75em;
+    width: 9em;
 }
 
 .consult-porteur-table th.sorted {

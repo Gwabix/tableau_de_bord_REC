@@ -158,15 +158,30 @@ let consultPorteurSortState = {
 // INITIALISATION
 // ========================================
 
+let widgetInitialized = false;
+let widgetInitializing = false;
+
 function initWidget() {
     grist.ready({
         requiredAccess: 'full'
     });
 
-    grist.onRecord(async function (record) {
-        await loadAllTables();
-        initializeUI();
-        attachEventListeners();
+    // grist.onRecord peut se déclencher à chaque déplacement de curseur dans
+    // Grist. On n'initialise (et on ne reconstruit les formulaires) qu'une
+    // seule fois : sinon une saisie en cours dans « Saisir » serait écrasée.
+    // Les données se rafraîchissent au changement d'onglet et après chaque
+    // enregistrement.
+    grist.onRecord(async function () {
+        if (widgetInitialized || widgetInitializing) return;
+        widgetInitializing = true;
+        try {
+            if (!await loadAllTables()) return; // réessai au prochain onRecord
+            initializeUI();
+            attachEventListeners();
+            widgetInitialized = true;
+        } finally {
+            widgetInitializing = false;
+        }
     });
 }
 
@@ -205,9 +220,11 @@ async function loadAllTables() {
         }));
 
         console.log('Tables chargées:', tablesData);
+        return true;
     } catch (error) {
         console.error('Erreur lors du chargement des tables:', error);
         alert('Erreur lors du chargement des données. Vérifiez les noms des tables.');
+        return false;
     }
 }
 
@@ -336,36 +353,21 @@ function populateConsultSelectors() {
     buildEtatFilterCheckboxes(document.getElementById('filter-etat-checkboxes'), 'filter-etat');
 }
 
-function getNextMeetingDate() {
-    if (!tablesData.Agenda || tablesData.Agenda.length === 0) {
-        return null;
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTimestamp = today.getTime() / 1000;
-
-    const futureDates = tablesData.Agenda
-        .map(item => item.Date)
-        .filter(date => date >= todayTimestamp)
-        .sort((a, b) => a - b);
-
-    return futureDates.length > 0 ? futureDates[0] : null;
-}
-
 function getUpcomingMeetingDates() {
     if (!tablesData.Agenda || tablesData.Agenda.length === 0) {
         return [];
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTimestamp = today.getTime() / 1000;
-
+    const todayTs = todayCalendarTs();
     return tablesData.Agenda
         .map(item => item.Date)
-        .filter(date => date >= todayTimestamp)
+        .filter(date => date >= todayTs)
         .sort((a, b) => a - b);
+}
+
+function getNextMeetingDate() {
+    const futureDates = getUpcomingMeetingDates();
+    return futureDates.length > 0 ? futureDates[0] : null;
 }
 
 function populateUpcomingMeetingsSelect() {
@@ -377,7 +379,7 @@ function populateUpcomingMeetingsSelect() {
     const dateInput = document.getElementById('saisir-date');
     let currentTimestamp = null;
     if (dateInput && dateInput.value) {
-        const t = Math.floor(new Date(dateInput.value).getTime() / 1000);
+        const t = Math.floor(new Date(`${dateInput.value}T00:00:00Z`).getTime() / 1000);
         if (Number.isFinite(t)) currentTimestamp = t;
     }
 
@@ -397,19 +399,9 @@ function setDefaultDate() {
     const dateInput = document.getElementById('saisir-date');
     if (dateInput) {
         const nextMeetingDate = getNextMeetingDate();
-
-        if (nextMeetingDate) {
-            // Convertir le timestamp en format YYYY-MM-DD
-            const date = new Date(nextMeetingDate * 1000);
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            dateInput.value = `${year}-${month}-${day}`;
-        } else {
-            // Si pas de date dans l'agenda, utiliser aujourd'hui
-            const today = new Date().toISOString().split('T')[0];
-            dateInput.value = today;
-        }
+        dateInput.value = nextMeetingDate
+            ? tsToInputDate(nextMeetingDate)
+            : tsToInputDate(todayCalendarTs());
     }
 
     // Peupler le menu déroulant des réunions suivantes
@@ -550,7 +542,8 @@ function getUniqueDates(data, column) {
     const dates = data
         .map(row => row[column])
         .filter(val => val);
-    return [...new Set(dates)].sort((a, b) => new Date(b) - new Date(a));
+    // Timestamps Grist (secondes) : tri numérique décroissant (plus récent d'abord).
+    return [...new Set(dates)].sort((a, b) => b - a);
 }
 
 function getUniquePorteurs() {
@@ -566,15 +559,15 @@ function getUniquePorteurs() {
     return [...porteurs].sort();
 }
 
+// Les colonnes Date de Grist stockent un timestamp « minuit UTC » représentant
+// un jour calendaire. On affiche donc toujours en UTC pour que la date reste la
+// même quel que soit le fuseau du navigateur (métropole, DOM-TOM…).
 function formatDate(dateString) {
     if (!dateString) return '';
-    let date;
-    if (typeof dateString === 'number') {
-        date = new Date(dateString * 1000);
-    } else {
-        date = new Date(dateString);
-    }
+    const date = typeof dateString === 'number' ? new Date(dateString * 1000) : new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleDateString('fr-FR', {
+        timeZone: 'UTC',
         year: 'numeric',
         month: 'long',
         day: 'numeric'
@@ -587,10 +580,27 @@ function formatDateShort(value) {
     const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
     if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleDateString('fr-FR', {
+        timeZone: 'UTC',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
     });
+}
+
+/**
+ * Timestamp (secondes) de « minuit UTC » du jour calendaire local courant,
+ * comparable directement aux dates stockées dans Grist.
+ */
+function todayCalendarTs() {
+    const now = new Date();
+    return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 1000;
+}
+
+/** Convertit un timestamp Grist (secondes, minuit UTC) en « AAAA-MM-JJ ». */
+function tsToInputDate(ts) {
+    if (!ts && ts !== 0) return '';
+    const date = new Date(ts * 1000);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString().split('T')[0];
 }
 
 function getPersonneNameById(id) {
@@ -804,7 +814,11 @@ function attachEventListeners() {
     // Réunion
     const reunionDateSelect = document.getElementById('reunion-date-select');
     if (reunionDateSelect) {
-        reunionDateSelect.addEventListener('change', reunionDisplayData);
+        reunionDateSelect.addEventListener('change', async () => {
+            // Enregistrer une modification en attente avant de recharger la vue
+            await flushReunionAutoSave();
+            reunionDisplayData();
+        });
         // Afficher les données pour la date par défaut
         if (reunionDateSelect.value) {
             reunionDisplayData();
@@ -815,6 +829,7 @@ function attachEventListeners() {
     if (tabReunion) {
         tabReunion.addEventListener('focusout', handleReunionAutoSaveEvent);
         tabReunion.addEventListener('change', handleReunionAutoSaveEvent);
+        tabReunion.addEventListener('input', handleReunionAutoSaveEvent);
     }
 
     const tabModifier = document.getElementById('tab-modifier');
@@ -914,16 +929,9 @@ function attachEventListeners() {
                 const dateInput = document.getElementById('saisir-date');
                 if (dateInput) {
                     const timestamp = Number.parseFloat(this.value);
-                    // Validation : vérifier que c'est un nombre valide
-                    if (!Number.isNaN(timestamp) && Number.isFinite(timestamp)) {
-                        const date = new Date(timestamp * 1000);
-                        // Vérifier que la date est valide
-                        if (!Number.isNaN(date.getTime())) {
-                            const year = date.getFullYear();
-                            const month = String(date.getMonth() + 1).padStart(2, '0');
-                            const day = String(date.getDate()).padStart(2, '0');
-                            dateInput.value = `${year}-${month}-${day}`;
-                        }
+                    if (Number.isFinite(timestamp)) {
+                        const iso = tsToInputDate(timestamp);
+                        if (iso) dateInput.value = iso;
                     }
                 }
                 // Réinitialiser le menu déroulant et exclure la date choisie
@@ -939,6 +947,7 @@ async function switchTab(event) {
 
     // Enregistrer une éventuelle modification en attente avant de quitter l'onglet
     await flushModifyAutoSave();
+    await flushReunionAutoSave();
 
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -969,10 +978,32 @@ async function refreshActiveTabData(targetTab) {
     populateConsultSelectors();
 
     if (targetTab === 'saisir') {
+        // initializeUI() ne s'exécute qu'une fois : on rafraîchit ici les listes
+        // dérivées de Menus, mais seulement si la saisie n'a pas commencé (pour
+        // ne pas effacer des sélections en cours).
+        if (saisirFormIsPristine()) {
+            populatePorteurs();
+            populateEtats();
+        }
         populateUpcomingMeetingsSelect();
     } else if (targetTab === 'reunion') {
         refreshReunionView();
     }
+}
+
+/** true si aucun dossier de l'onglet Saisir n'a été renseigné. */
+function saisirFormIsPristine() {
+    const container = document.getElementById('saisir-dossiers');
+    if (!container) return true;
+
+    return [...container.querySelectorAll('.dossier-block')].every(block => {
+        const intitule = block.querySelector('.dossier-intitule')?.value.trim();
+        const actions = block.querySelector('.dossier-actions')?.value.trim();
+        const echeance = block.querySelector('.dossier-echeance')?.value;
+        const etat = block.querySelector('.dossier-etat')?.value;
+        const porteur = block.querySelector('.dossier-porteurs .multi-select-option.selected');
+        return !intitule && !actions && !echeance && !etat && !porteur;
+    });
 }
 
 /**
@@ -2345,14 +2376,9 @@ function readEditableRow(row, dossier) {
         : (Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_.filter(v => v !== 'L') : []);
 
     const actionsCell = row.querySelector('[data-col="actions"]');
-    let actions;
-    if (actionsCell) {
-        const clone = actionsCell.cloneNode(true);
-        clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-        actions = clone.textContent.trim();
-    } else {
-        actions = dossier.Actions_a_mettre_en_uvre_etapes || '';
-    }
+    const actions = actionsCell
+        ? extractCellText(actionsCell).trim()
+        : (dossier.Actions_a_mettre_en_uvre_etapes || '');
 
     const echeanceInput = row.querySelector('[data-col="echeance"] input[type="date"]');
     let echeance = dossier.Echeance;
@@ -2611,15 +2637,10 @@ function modifyByPorteurAllDossiers() {
 
     // Filtrer les dossiers échus si le toggle est activé (sur l'échéance courante)
     if (hideExpired) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
+        const todayTs = todayCalendarTs();
         dossiers = dossiers.filter(dossier => {
             if (!dossier.Echeance) return true; // Garder les dossiers sans échéance
-
-            const echeanceDate = new Date(dossier.Echeance * 1000);
-            echeanceDate.setHours(0, 0, 0, 0);
-            return echeanceDate >= today;
+            return dossier.Echeance >= todayTs;
         });
     }
 
@@ -2810,6 +2831,54 @@ function insertLineBreakAtCaret() {
 }
 
 /**
+ * Insère du texte brut à la position du curseur (les \n deviennent des <br>),
+ * sans execCommand ni HTML.
+ */
+function insertPlainTextAtCaret(text) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+
+    const frag = document.createDocumentFragment();
+    String(text).split('\n').forEach((line, i) => {
+        if (i > 0) frag.appendChild(document.createElement('br'));
+        if (line) frag.appendChild(document.createTextNode(line));
+    });
+    const last = frag.lastChild;
+    range.insertNode(frag);
+
+    if (last) {
+        range.setStartAfter(last);
+        range.setEndAfter(last);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+}
+
+/**
+ * Extrait le texte d'une cellule éditable en préservant les sauts de ligne :
+ * <br> et fins de blocs (<div>, <p>) deviennent des \n. Robuste aux <div>
+ * qu'un navigateur ou un collage aurait pu insérer.
+ */
+function extractCellText(el) {
+    let out = '';
+    el.childNodes.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            out += node.textContent;
+        } else if (node.nodeName === 'BR') {
+            out += '\n';
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const isBlock = node.nodeName === 'DIV' || node.nodeName === 'P' || node.nodeName === 'LI';
+            if (isBlock && out && !out.endsWith('\n')) out += '\n';
+            out += extractCellText(node);
+            if (isBlock && !out.endsWith('\n')) out += '\n';
+        }
+    });
+    return out;
+}
+
+/**
  * Rend éditables les cellules d'un ou plusieurs tableaux de dossiers.
  * Le type de chaque cellule est décrit par son attribut `data-col` posé au
  * moment de la génération (voir buildDossierTable), et non par sa position :
@@ -2832,6 +2901,11 @@ function makeFieldsEditable(container) {
             if (col === 'dossier') {
                 td.contentEditable = true;
                 applyStyle(td, EDITABLE_CELL_STYLE);
+                td.addEventListener('paste', function (event) {
+                    if (!event.clipboardData) return;
+                    event.preventDefault();
+                    insertPlainTextAtCaret(event.clipboardData.getData('text/plain').replace(/\s+/g, ' '));
+                });
             } else if (col === 'actions') {
                 td.contentEditable = true;
                 applyStyle(td, EDITABLE_CELL_STYLE);
@@ -2840,6 +2914,13 @@ function makeFieldsEditable(container) {
                         event.preventDefault();
                         insertLineBreakAtCaret();
                     }
+                });
+                // Coller en texte brut : évite d'injecter des <div>/<span>/styles
+                // qui fausseraient la relecture (fausse « modification »).
+                td.addEventListener('paste', function (event) {
+                    if (!event.clipboardData) return;
+                    event.preventDefault();
+                    insertPlainTextAtCaret(event.clipboardData.getData('text/plain'));
                 });
             } else if (col === 'porteurs' && dossierData) {
                 const currentPorteurs = dossierData.Porteur_s_ || [];
@@ -2894,7 +2975,7 @@ function makeFieldsEditable(container) {
                 dateInput.style.padding = '4px';
 
                 if (sourceTs) {
-                    dateInput.value = new Date(sourceTs * 1000).toISOString().split('T')[0];
+                    dateInput.value = tsToInputDate(sourceTs);
                 }
 
                 td.innerHTML = '';
@@ -3233,22 +3314,17 @@ function populateReunionDateSelect() {
     select.innerHTML = '<option value="">-- Choisir une date --</option>';
 
     // Déterminer la date par défaut (prochaine réunion à compter d'aujourd'hui inclus)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayTs = todayCalendarTs();
     let defaultDate = null;
 
     dates.forEach(dateValue => {
-        const date = typeof dateValue === 'number'
-            ? new Date(dateValue * 1000)
-            : new Date(dateValue);
-
         const option = document.createElement('option');
         option.value = dateValue;
         option.textContent = formatDate(dateValue);
 
         // Les dates sont triées en ordre décroissant (plus récente en premier)
         // On continue à itérer pour trouver la date la plus proche >= aujourd'hui
-        if (date >= today) {
+        if (dateValue >= todayTs) {
             defaultDate = dateValue;
         }
 
@@ -3530,30 +3606,73 @@ function showModifySaveStatus(state) {
 // ENREGISTREMENT AUTOMATIQUE - RÉUNION
 // ========================================
 
+const REUNION_TABLE_IDS = ['reunion-odj-table', 'reunion-echeance-table', 'reunion-expired-table'];
 let reunionAutoSaveTimer = null;
+let reunionAutoSaveInFlight = false;
+
+function reunionResultsContains(node) {
+    return REUNION_TABLE_IDS.some(id => document.getElementById(id)?.contains(node));
+}
 
 function handleReunionAutoSaveEvent(e) {
-    const tableIds = ['reunion-odj-table', 'reunion-echeance-table', 'reunion-expired-table'];
-    const inTable = tableIds.some(id => {
-        const el = document.getElementById(id);
-        return el && el.contains(e.target);
-    });
-    if (!inTable) return;
+    if (!reunionResultsContains(e.target)) return;
 
-    // Pour les champs contenteditable, on n'enregistre qu'au blur (focusout)
-    // afin de ne pas interrompre la saisie en cours
-    if (e.type === 'focusout' && e.target.contentEditable !== 'true') return;
-    if (e.type === 'change' && e.target.contentEditable === 'true') return;
+    if (e.type === 'input') {
+        // Frappe en cours : repousser (mais pas amorcer) un enregistrement
+        // pour ne pas reconstruire le tableau pendant l'édition.
+        if (reunionAutoSaveTimer !== null) scheduleReunionAutoSave();
+        return;
+    }
 
-    scheduleReunionAutoSave();
+    if (e.type === 'change') {
+        if (e.target.contentEditable === 'true') return;
+        scheduleReunionAutoSave();
+        return;
+    }
+
+    // focusout : cellules contenteditable, uniquement quand le focus a
+    // réellement quitté la zone d'édition (pas un passage de cellule à cellule).
+    if (e.type === 'focusout') {
+        if (e.target.contentEditable !== 'true') return;
+        setTimeout(() => {
+            if (!reunionResultsContains(document.activeElement)) {
+                scheduleReunionAutoSave();
+            }
+        }, 0);
+    }
 }
 
 function scheduleReunionAutoSave() {
     clearTimeout(reunionAutoSaveTimer);
-    reunionAutoSaveTimer = setTimeout(async () => {
-        showReunionSaveStatus('saving');
-        await saveReunionModifications();
+    reunionAutoSaveTimer = setTimeout(() => {
+        reunionAutoSaveTimer = null;
+        void performReunionAutoSave();
     }, 800);
+}
+
+/** Force l'exécution d'un enregistrement Réunion en attente (changement d'onglet). */
+async function flushReunionAutoSave() {
+    if (reunionAutoSaveTimer === null) return;
+    clearTimeout(reunionAutoSaveTimer);
+    reunionAutoSaveTimer = null;
+    await performReunionAutoSave();
+}
+
+async function performReunionAutoSave() {
+    if (reunionAutoSaveInFlight) return;
+
+    const hasRows = REUNION_TABLE_IDS.some(id =>
+        document.getElementById(id)?.querySelector('table tbody tr')
+    );
+    if (!hasRows) return;
+
+    reunionAutoSaveInFlight = true;
+    showReunionSaveStatus('saving');
+    try {
+        await saveReunionModifications();
+    } finally {
+        reunionAutoSaveInFlight = false;
+    }
 }
 
 function showReunionSaveStatus(state) {
