@@ -707,10 +707,17 @@ function attachEventListeners() {
         button.addEventListener('click', switchTab);
     });
 
-    // Multi-select
-    document.querySelectorAll('.multi-select-option').forEach(option => {
-        option.addEventListener('click', toggleMultiSelect);
-    });
+    // Multi-select (porteurs, onglet Saisir) : les options sont recréées
+    // dynamiquement par populatePorteurs() / addDossier(), on écoute donc sur
+    // le conteneur stable par délégation.
+    const saisirDossiers = document.getElementById('saisir-dossiers');
+    if (saisirDossiers) {
+        saisirDossiers.addEventListener('click', function (event) {
+            if (event.target.classList.contains('multi-select-option')) {
+                toggleMultiSelect(event);
+            }
+        });
+    }
 
     // Dossiers
     const btnAddDossier = document.getElementById('btn-add-dossier');
@@ -1066,10 +1073,8 @@ function addDossier() {
     populatePorteurs();
     populateEtats();
 
-    // Attacher les événements
-    newDossier.querySelectorAll('.multi-select-option').forEach(option => {
-        option.addEventListener('click', toggleMultiSelect);
-    });
+    // Les clics sur .multi-select-option sont gérés par délégation sur
+    // #saisir-dossiers (voir attachEventListeners), rien à attacher ici.
 
     // Attacher l'événement au bouton Supprimer (sécurisé sans onclick inline)
     const removeBtn = newDossier.querySelector('.btn-remove-dossier');
