@@ -593,7 +593,7 @@ td:nth-child(3) {
 th[data-col="porteurs"], td[data-col="porteurs"],
 th[data-col="dossier"], td[data-col="dossier"],
 th[data-col="change"], td[data-col="change"] {
-    width: 10em;
+    width: 12em;
 }
 
 th[data-col="etat"], td[data-col="etat"] {
