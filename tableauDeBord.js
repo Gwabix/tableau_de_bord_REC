@@ -786,8 +786,9 @@ function attachEventListeners() {
 
     const tabModifier = document.getElementById('tab-modifier');
     if (tabModifier) {
-        tabModifier.addEventListener('focusout', handleModifyPorteurAutoSaveEvent);
-        tabModifier.addEventListener('change', handleModifyPorteurAutoSaveEvent);
+        tabModifier.addEventListener('focusout', handleModifyAutoSaveEvent);
+        tabModifier.addEventListener('change', handleModifyAutoSaveEvent);
+        tabModifier.addEventListener('input', handleModifyAutoSaveEvent);
     }
 
     const btnPrintReunion = document.getElementById('btn-print-reunion');
@@ -802,7 +803,7 @@ function attachEventListeners() {
 
     const modifyDateSelect = document.getElementById('modify-date-select');
     if (modifyDateSelect) {
-        modifyDateSelect.addEventListener('change', modifyByDate);
+        modifyDateSelect.addEventListener('change', withModifyFlush(modifyByDate));
     }
 
     let modifyDossierInput = document.getElementById('modify-dossier-input');
@@ -812,7 +813,7 @@ function attachEventListeners() {
 
     const modifyPorteurSelect = document.getElementById('modify-porteur-select');
     if (modifyPorteurSelect) {
-        modifyPorteurSelect.addEventListener('change', handleModifyPorteurSelectChange);
+        modifyPorteurSelect.addEventListener('change', withModifyFlush(handleModifyPorteurSelectChange));
     }
 
     const modifyPorteurDossierSelect = document.getElementById('modify-porteur-dossier-select');
@@ -838,17 +839,12 @@ function attachEventListeners() {
 
     const modifyEcheanceSelect = document.getElementById('modify-echeance-select');
     if (modifyEcheanceSelect) {
-        modifyEcheanceSelect.addEventListener('change', modifyByEcheance);
+        modifyEcheanceSelect.addEventListener('change', withModifyFlush(modifyByEcheance));
     }
 
-    const btnSaveModif = document.getElementById('btn-save-modifications');
-    if (btnSaveModif) {
-        btnSaveModif.addEventListener('click', saveModifications);
-    }
-
-    const btnCancelModif = document.getElementById('btn-cancel-modifications');
-    if (btnCancelModif) {
-        btnCancelModif.addEventListener('click', cancelModifications);
+    const btnCloseModif = document.getElementById('btn-close-modifications');
+    if (btnCloseModif) {
+        btnCloseModif.addEventListener('click', closeModifyForm);
     }
 
     // Boutons de réinitialisation
@@ -900,6 +896,9 @@ function attachEventListeners() {
 
 async function switchTab(event) {
     const targetTab = event.target.dataset.tab;
+
+    // Enregistrer une éventuelle modification en attente avant de quitter l'onglet
+    await flushModifyAutoSave();
 
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -1357,14 +1356,15 @@ function attachDossierAutocomplete(input, mode) {
             highlightSuggestion(suggestionsDiv, highlightedIndex);
         } else if (event.key === 'Enter' && highlightedIndex >= 0) {
             event.preventDefault();
-            input.value = currentSuggestions[highlightedIndex];
+            const chosen = currentSuggestions[highlightedIndex];
+            input.value = chosen;
             suggestionsDiv.classList.remove('visible');
             // Mettre à jour le bouton clear après sélection
             toggleClearButton(clearButtonId, input.value);
             if (mode === 'consult') {
-                consultByDossier(currentSuggestions[highlightedIndex]);
+                consultByDossier(chosen);
             } else if (mode === 'modify') {
-                modifyByDossier(currentSuggestions[highlightedIndex]);
+                flushModifyAutoSave().then(() => modifyByDossier(chosen));
             }
         } else if (event.key === 'Escape') {
             suggestionsDiv.classList.remove('visible');
@@ -1387,7 +1387,7 @@ function attachDossierAutocomplete(input, mode) {
             if (mode === 'consult') {
                 consultByDossier(dossierName);
             } else if (mode === 'modify') {
-                modifyByDossier(dossierName);
+                flushModifyAutoSave().then(() => modifyByDossier(dossierName));
             }
         }
     });
@@ -2288,9 +2288,8 @@ function readEditableRow(row, dossier) {
     return { nomCellule, porteurs, actions, echeance, changementEtat };
 }
 
-function handleModifyTypeChange(event) {
-    const type = event.target.value;
-
+/** Affiche le sélecteur correspondant au mode « Modifier » (date/dossier/porteur/échéance). */
+function setModifySelectorVisibility(type) {
     const dateSelector = document.getElementById('modify-date-selector');
     const dossierSelector = document.getElementById('modify-dossier-selector');
     const porteurSelector = document.getElementById('modify-porteur-selector');
@@ -2300,6 +2299,15 @@ function handleModifyTypeChange(event) {
     if (dossierSelector) dossierSelector.classList.toggle('hidden', type !== 'dossier');
     if (porteurSelector) porteurSelector.classList.toggle('hidden', type !== 'porteur');
     if (echeanceSelector) echeanceSelector.classList.toggle('hidden', type !== 'echeance');
+}
+
+async function handleModifyTypeChange(event) {
+    const type = event.target.value;
+
+    // Enregistrer une éventuelle modification en attente avant de tout réinitialiser
+    await flushModifyAutoSave();
+
+    setModifySelectorVisibility(type);
 
     const resultsDiv = document.getElementById('modify-results');
     if (resultsDiv) resultsDiv.innerHTML = '';
@@ -2309,6 +2317,10 @@ function handleModifyTypeChange(event) {
 
     // Vider les sélections lors du changement de mode
     clearAllSelections();
+
+    modifyContext.type = null;
+    modifyContext.value = null;
+    modifyContext.secondValue = null;
 }
 
 function modifyByDate() {
@@ -2440,7 +2452,10 @@ function handleModifyPorteurSelectChange() {
  * est sélectionné ou non. Utilisé par le sélecteur de dossier, la case
  * « Masquer les dossiers échus » et les filtres d'état (délégation).
  */
-function handleModifyPorteurDossierSelectChange() {
+async function handleModifyPorteurDossierSelectChange() {
+    // Enregistrer d'éventuelles modifications avant de reconstruire l'affichage
+    await flushModifyAutoSave();
+
     const dossierSelect = document.getElementById('modify-porteur-dossier-select');
     if (dossierSelect && dossierSelect.value !== '') {
         modifyByPorteurDossier();
@@ -2873,89 +2888,61 @@ function reorderSelectOptions(select) {
     ordered.forEach(opt => { opt.selected = selectedValues.has(opt.value); });
 }
 
-async function saveModifications() {
-    try {
-        const modifyResults = document.getElementById('modify-results');
-        if (!modifyResults) return;
-
-        const modifyType = document.querySelector('input[name="modify-type"]:checked');
-        if (!modifyType) return;
-
-        const type = modifyType.value;
-
-        let saved = true;
-        if (type === 'date') {
-            saved = await saveModificationsByDate();
-        } else if (type === 'dossier') {
-            saved = await saveModificationsByDossier();
-        } else if (type === 'porteur') {
-            saved = await saveModificationsByPorteur();
-        } else if (type === 'echeance') {
-            saved = await saveModificationsByEcheance();
-        }
-
-        // Suppression annulée par l'utilisateur : ne rien enregistrer
-        if (saved === false) return;
-
-        alert('Modifications enregistrées avec succès !');
-        await loadAllTables();
-        await removeDuplicateRecords();
-        await loadAllTables();
-        populateConsultSelectors();
-
-        // Rouvrir le formulaire avec le contexte sauvegardé
-        reopenModifyForm();
-
-    } catch (error) {
-        console.error('Erreur lors de la sauvegarde:', error);
-        alert('Erreur lors de l\'enregistrement des modifications: ' + error.message);
+/**
+ * Exécute la sauvegarde correspondant au mode « Modifier » courant.
+ * @returns {Promise<boolean|undefined>} false si l'utilisateur a annulé une suppression
+ */
+function runModifySaveByType() {
+    switch (modifyContext.type) {
+        case 'date': return saveModificationsByDate();
+        case 'dossier': return saveModificationsByDossier();
+        case 'porteur': return saveModificationsByPorteur();
+        case 'echeance': return saveModificationsByEcheance();
+        default: return Promise.resolve(true);
     }
 }
 
 function reopenModifyForm() {
-    if (!modifyContext.type || !modifyContext.value) return;
+    // Copie locale : les fonctions modifyBy* réécrivent modifyContext au fil du re-render.
+    const { type, value, secondValue } = modifyContext;
+    if (!type || !value) return;
 
-    // Restaurer le type de modification sélectionné
-    const typeRadio = document.querySelector(`input[name="modify-type"][value="${modifyContext.type}"]`);
-    if (typeRadio) {
-        typeRadio.checked = true;
-        // Déclencher l'événement pour afficher le bon sélecteur
-        handleModifyTypeChange({ target: typeRadio });
-    }
+    const typeRadio = document.querySelector(`input[name="modify-type"][value="${type}"]`);
+    if (typeRadio) typeRadio.checked = true;
+    setModifySelectorVisibility(type);
 
-    // Restaurer la valeur sélectionnée selon le type
-    if (modifyContext.type === 'date') {
+    if (type === 'date') {
         const dateSelect = document.getElementById('modify-date-select');
         if (dateSelect) {
-            dateSelect.value = modifyContext.value;
+            dateSelect.value = value;
             modifyByDate();
         }
-    } else if (modifyContext.type === 'dossier') {
+    } else if (type === 'dossier') {
         const dossierInput = document.getElementById('modify-dossier-input');
         if (dossierInput) {
-            dossierInput.value = modifyContext.value;
-            toggleClearButton('btn-clear-modify-dossier', modifyContext.value);
-            modifyByDossier(modifyContext.value);
+            dossierInput.value = value;
+            toggleClearButton('btn-clear-modify-dossier', value);
+            modifyByDossier(value);
         }
-    } else if (modifyContext.type === 'porteur') {
+    } else if (type === 'porteur') {
         const porteurSelect = document.getElementById('modify-porteur-select');
         if (porteurSelect) {
-            porteurSelect.value = modifyContext.value;
+            porteurSelect.value = value;
             handleModifyPorteurSelectChange();
 
-            // Restaurer le dossier sélectionné
+            // Restaurer le dossier précis éventuellement sélectionné
             setTimeout(() => {
                 const dossierSelect = document.getElementById('modify-porteur-dossier-select');
-                if (dossierSelect && modifyContext.secondValue) {
-                    dossierSelect.value = modifyContext.secondValue;
+                if (dossierSelect && secondValue) {
+                    dossierSelect.value = secondValue;
                     modifyByPorteurDossier();
                 }
             }, 100);
         }
-    } else if (modifyContext.type === 'echeance') {
+    } else if (type === 'echeance') {
         const echeanceSelect = document.getElementById('modify-echeance-select');
         if (echeanceSelect) {
-            echeanceSelect.value = modifyContext.value;
+            echeanceSelect.value = value;
             modifyByEcheance();
         }
     }
@@ -3138,7 +3125,7 @@ async function saveModificationsByDossier() {
     }
 }
 
-async function saveModificationsByPorteur({ autoSave = false } = {}) {
+async function saveModificationsByPorteur() {
     const modifyResults = document.getElementById('modify-results');
     if (!modifyResults) return;
 
@@ -3352,15 +3339,22 @@ async function saveModificationsByEcheance() {
     }
 }
 
-function cancelModifications() {
+async function closeModifyForm() {
+    // Les modifications sont enregistrées automatiquement : on s'assure qu'une
+    // sauvegarde en attente est bien partie avant de refermer la vue.
+    await flushModifyAutoSave();
+
     const resultsDiv = document.getElementById('modify-results');
     if (resultsDiv) resultsDiv.innerHTML = '';
 
     const buttons = document.getElementById('modify-buttons');
     if (buttons) buttons.classList.add('hidden');
 
-    const dateSelect = document.getElementById('modify-date-select');
-    if (dateSelect) dateSelect.value = '';
+    modifyContext.type = null;
+    modifyContext.value = null;
+    modifyContext.secondValue = null;
+
+    clearAllSelections();
 }
 
 // ========================================
@@ -3534,51 +3528,108 @@ function clearReunionDisplay() {
 }
 
 // ========================================
-// ENREGISTREMENT AUTOMATIQUE - MODIFIER PAR PORTEUR
+// ENREGISTREMENT AUTOMATIQUE - ONGLET MODIFIER
+// (tous les modes : date / dossier / porteur / échéance)
 // ========================================
 
-let modifyPorteurAutoSaveTimer = null;
+let modifyAutoSaveTimer = null;
+let modifyAutoSaveInFlight = false;
 
-function handleModifyPorteurAutoSaveEvent(e) {
-    // Uniquement en mode porteur "tous les dossiers"
-    if (modifyContext.type !== 'porteur' || modifyContext.secondValue !== null) return;
+function handleModifyAutoSaveEvent(e) {
+    if (!modifyContext.type) return;
 
     const modifyResults = document.getElementById('modify-results');
     if (!modifyResults || !modifyResults.contains(e.target)) return;
 
-    // Pour les champs contenteditable, on n'enregistre qu'au blur (focusout)
-    if (e.type === 'focusout' && e.target.contentEditable !== 'true') return;
-    if (e.type === 'change' && e.target.contentEditable === 'true') return;
+    if (e.type === 'input') {
+        // Frappe en cours dans une cellule éditable : repousser (mais ne pas
+        // amorcer) un enregistrement pour ne pas reconstruire le tableau
+        // pendant que l'utilisateur écrit.
+        if (modifyAutoSaveTimer !== null) scheduleModifyAutoSave();
+        return;
+    }
 
-    scheduleModifyPorteurAutoSave();
+    // change : listes déroulantes, date, multi-select (pas les contenteditable)
+    if (e.type === 'change') {
+        if (e.target.contentEditable === 'true') return;
+        scheduleModifyAutoSave();
+        return;
+    }
+
+    // focusout : uniquement les cellules contenteditable, et seulement quand le
+    // focus a réellement quitté la zone d'édition (pas un simple passage de
+    // cellule à cellule).
+    if (e.type === 'focusout') {
+        if (e.target.contentEditable !== 'true') return;
+        setTimeout(() => {
+            if (!modifyResults.contains(document.activeElement)) {
+                scheduleModifyAutoSave();
+            }
+        }, 0);
+    }
 }
 
-function scheduleModifyPorteurAutoSave() {
-    clearTimeout(modifyPorteurAutoSaveTimer);
-    modifyPorteurAutoSaveTimer = setTimeout(async () => {
-        showModifyPorteurSaveStatus('saving');
-        try {
-            const saved = await saveModificationsByPorteur({ autoSave: true });
-            if (saved === false) {
-                // Suppression annulée par l'utilisateur : on rouvre le formulaire tel quel
-                showModifyPorteurSaveStatus('idle');
-                reopenModifyForm();
-                return;
-            }
-            await loadAllTables();
-            await removeDuplicateRecords();
-            await loadAllTables();
-            populateConsultSelectors();
-            reopenModifyForm();
-            showModifyPorteurSaveStatus('saved');
-        } catch (error) {
-            console.error('Erreur auto-save modifier porteur:', error);
-            showModifyPorteurSaveStatus('error');
-        }
+function scheduleModifyAutoSave() {
+    clearTimeout(modifyAutoSaveTimer);
+    modifyAutoSaveTimer = setTimeout(() => {
+        modifyAutoSaveTimer = null;
+        void performModifyAutoSave();
     }, 800);
 }
 
-function showModifyPorteurSaveStatus(state) {
+/**
+ * Force l'exécution immédiate d'un enregistrement en attente (changement
+ * d'onglet, de mode, fermeture de la vue).
+ */
+async function flushModifyAutoSave() {
+    if (modifyAutoSaveTimer === null) return;
+    clearTimeout(modifyAutoSaveTimer);
+    modifyAutoSaveTimer = null;
+    await performModifyAutoSave();
+}
+
+/**
+ * Emballe un gestionnaire d'événement qui va reconstruire l'affichage de
+ * l'onglet Modifier : on enregistre d'abord toute modification en attente.
+ */
+function withModifyFlush(fn) {
+    return async function (event) {
+        await flushModifyAutoSave();
+        return fn.call(this, event);
+    };
+}
+
+async function performModifyAutoSave() {
+    if (modifyAutoSaveInFlight) return;
+
+    const modifyResults = document.getElementById('modify-results');
+    if (!modifyResults || !modifyResults.querySelector('table tbody tr')) return;
+
+    modifyAutoSaveInFlight = true;
+    showModifySaveStatus('saving');
+    try {
+        const saved = await runModifySaveByType();
+        if (saved === false) {
+            // Suppression annulée : on rouvre le formulaire tel quel
+            showModifySaveStatus('idle');
+            reopenModifyForm();
+            return;
+        }
+        await loadAllTables();
+        await removeDuplicateRecords();
+        await loadAllTables();
+        populateConsultSelectors();
+        reopenModifyForm();
+        showModifySaveStatus('saved');
+    } catch (error) {
+        console.error('Erreur enregistrement automatique (Modifier) :', error);
+        showModifySaveStatus('error');
+    } finally {
+        modifyAutoSaveInFlight = false;
+    }
+}
+
+function showModifySaveStatus(state) {
     const el = document.getElementById('modify-autosave-status');
     if (!el) return;
 
