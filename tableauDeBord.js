@@ -1647,6 +1647,7 @@ function consultByDate() {
     });
 
     table.appendChild(tbody);
+    tagConsultTableColumns(table);
     tableContainer.appendChild(table);
     section.appendChild(tableContainer);
     resultsDiv.appendChild(section);
@@ -1740,6 +1741,7 @@ function consultByDossier(dossierName) {
     });
 
     table.appendChild(tbody);
+    tagConsultTableColumns(table);
     tableContainer.appendChild(table);
     section.appendChild(tableContainer);
     resultsDiv.appendChild(section);
@@ -1848,17 +1850,18 @@ function consultByPorteur() {
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     const headerConfig = [
-        { text: 'Date réunion', sortKey: 'Date_de_la_reunion' },
-        { text: 'Dossier', sortKey: 'Dossier' },
-        { text: 'Actions', sortKey: 'Actions_a_mettre_en_uvre_etapes' },
-        { text: 'Porteur(s)', sortKey: 'Porteur_s_' },
-        { text: 'Échéance', sortKey: 'Echeance' },
-        { text: 'État', sortKey: 'Etat' },
-        { text: 'Date de modification', sortKey: 'Enregistrement' }
+        { text: 'Date réunion', sortKey: 'Date_de_la_reunion', col: 'date-reunion' },
+        { text: 'Dossier', sortKey: 'Dossier', col: 'dossier' },
+        { text: 'Actions', sortKey: 'Actions_a_mettre_en_uvre_etapes', col: 'actions' },
+        { text: 'Porteur(s)', sortKey: 'Porteur_s_', col: 'porteurs' },
+        { text: 'Échéance', sortKey: 'Echeance', col: 'echeance' },
+        { text: 'État', sortKey: 'Etat', col: 'etat' },
+        { text: 'Date de modification', sortKey: 'Enregistrement', col: 'date-enr' }
     ];
 
-    headerConfig.forEach(({ text, sortKey }) => {
+    headerConfig.forEach(({ text, sortKey, col }) => {
         const th = document.createElement('th');
+        th.dataset.col = col;
         const isActiveSort = consultPorteurSortState.key === sortKey;
 
         const button = document.createElement('button');
@@ -1957,6 +1960,7 @@ function consultByPorteur() {
     });
 
     table.appendChild(tbody);
+    tagConsultTableColumns(table);
     tableContainer.appendChild(table);
     section.appendChild(tableContainer);
     resultsDiv.appendChild(section);
@@ -2122,6 +2126,7 @@ function consultByEcheance() {
     });
 
     table.appendChild(tbody);
+    tagConsultTableColumns(table);
     tableContainer.appendChild(table);
     section.appendChild(tableContainer);
     resultsDiv.appendChild(section);
@@ -2218,7 +2223,7 @@ const DOSSIER_COLUMN_LABELS = {
     'echeance': 'Échéance',
     'date-reunion': 'Date réunion',
     'etat': 'État',
-    'date-enr': "Date d'enregistrement",
+    'date-enr': 'Enregistré le',
     'change': "Changement d'état"
 };
 
@@ -2226,6 +2231,39 @@ function getDossierPorteursText(dossier) {
     return Array.isArray(dossier.Porteur_s_) && dossier.Porteur_s_.length > 0
         ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(Boolean).join(', ')
         : '';
+}
+
+// En-tête (texte) -> clé de colonne, pour les tableaux de consultation
+// construits en createElement (sans data-col d'origine).
+const CONSULT_HEADER_TO_COL = {
+    'Dossier': 'dossier',
+    'Porteur(s)': 'porteurs',
+    'Actions': 'actions',
+    'Échéance': 'echeance',
+    'Date réunion': 'date-reunion',
+    'Date d’enregistrement': 'date-enr',
+    "Date d'enregistrement": 'date-enr',
+    'Date de modification': 'date-enr',
+    'État': 'etat'
+};
+
+/**
+ * Pose data-col sur les <th>/<td> d'un tableau (pour appliquer les largeurs
+ * CSS). Utilise data-col déjà présent sur le <th>, sinon le texte de l'en-tête.
+ */
+function tagConsultTableColumns(table) {
+    if (!table) return;
+    const headerCells = [...table.querySelectorAll('thead th')];
+    const cols = headerCells.map(th => th.dataset.col || CONSULT_HEADER_TO_COL[th.textContent.trim()] || '');
+
+    headerCells.forEach((th, i) => {
+        if (cols[i] && !th.dataset.col) th.dataset.col = cols[i];
+    });
+    table.querySelectorAll('tbody tr').forEach(tr => {
+        [...tr.children].forEach((td, i) => {
+            if (cols[i]) td.dataset.col = cols[i];
+        });
+    });
 }
 
 /**
@@ -2261,7 +2299,7 @@ function buildDossierCell(dossier, col) {
  */
 function buildDossierTable(dossiers, columns) {
     const head = '<thead><tr>'
-        + columns.map(col => `<th>${escapeHtml(DOSSIER_COLUMN_LABELS[col] || '')}</th>`).join('')
+        + columns.map(col => `<th data-col="${escapeHtmlAttribute(col)}">${escapeHtml(DOSSIER_COLUMN_LABELS[col] || '')}</th>`).join('')
         + '</tr></thead>';
 
     const body = '<tbody>' + dossiers.map(dossier => {

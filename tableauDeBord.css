@@ -555,6 +555,9 @@ table {
     width: 100%;
     border-collapse: collapse;
     background-color: white;
+    /* Largeurs pilotées par le CSS : colonnes courtes au plus juste,
+       « Actions » récupère tout l'espace restant. */
+    table-layout: fixed;
 }
 
 thead {
@@ -564,9 +567,43 @@ thead {
 th {
     background-color: #174040;
     color: white;
-    padding: 12px;
+    padding: 10px 8px;
     text-align: center;
     font-weight: 600;
+}
+
+/* --- Largeur des colonnes ---------------------------------------------
+   « Actions » est toujours la 3e colonne : largeur auto = espace restant.
+   Les autres colonnes sont compactes ; celles à contenu long peuvent
+   passer à la ligne (overflow-wrap). */
+th,
+td {
+    overflow-wrap: anywhere;
+    width: 8em;
+}
+
+th:nth-child(3),
+td:nth-child(3) {
+    width: auto;
+    text-align: left;
+    white-space: pre-wrap;
+}
+
+/* Colonnes repérées par data-col (tableaux Modifier / Réunion) */
+th[data-col="porteurs"], td[data-col="porteurs"],
+th[data-col="dossier"], td[data-col="dossier"],
+th[data-col="change"], td[data-col="change"] {
+    width: 10em;
+}
+
+th[data-col="etat"], td[data-col="etat"] {
+    width: 9em;
+}
+
+th[data-col="echeance"], td[data-col="echeance"],
+th[data-col="date-reunion"], td[data-col="date-reunion"],
+th[data-col="date-enr"], td[data-col="date-enr"] {
+    width: 6.5em;
 }
 
 .consult-porteur-table th.sorted {
@@ -614,20 +651,18 @@ th {
 }
 
 td {
-    padding: 12px;
+    padding: 10px 8px;
     border-bottom: 1px solid #e8e8e8;
     text-align: center;
     vertical-align: middle;
 }
 
-/* La colonne Actions (3e colonne) reste alignée à gauche */
-td:nth-child(3) {
-    text-align: left;
-}
-
 /* Styles pour les contrôles dans les cellules éditables */
 td select,
 td input[type="date"] {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     color: #262633 !important;
     background-color: rgba(255, 255, 255, 0.9) !important;
     border: 1px solid #d9d9d9 !important;
