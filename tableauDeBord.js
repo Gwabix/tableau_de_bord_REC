@@ -580,6 +580,73 @@ function getEtatIdByName(name) {
     return etat ? etat.id : null;
 }
 
+// ========================================
+// SUPPRESSION DE DOSSIERS
+// ========================================
+
+/**
+ * Retourne les IDs de tous les enregistrements ODJ appartenant au même dossier.
+ * Identité : ID_Dossier s'il est présent, sinon nom exact du dossier (pour les
+ * anciens enregistrements créés avant l'introduction de ID_Dossier).
+ * @param {object} dossier - Un enregistrement ODJ représentatif du dossier
+ * @returns {Array<number>}
+ */
+function getDossierRecordIds(dossier) {
+    const ids = new Set();
+    if (dossier && dossier.id !== null && dossier.id !== undefined) {
+        ids.add(dossier.id);
+    }
+
+    const idKey = dossier && dossier.ID_Dossier ? dossier.ID_Dossier : null;
+
+    tablesData.ODJ.forEach(record => {
+        const sameDossier = idKey
+            ? record.ID_Dossier === idKey
+            : (!record.ID_Dossier && record.Dossier === dossier.Dossier);
+        if (sameDossier) ids.add(record.id);
+    });
+
+    return [...ids];
+}
+
+/**
+ * Demande une confirmation unique puis supprime intégralement les dossiers
+ * marqués « Supprimer le dossier » (toutes leurs lignes d'historique).
+ * @param {Array<{dossier: object, nom: string}>} dossiersASupprimer
+ * @returns {Promise<{status: 'none'|'cancelled'|'deleted', deletedIds: Set<number>}>}
+ */
+async function confirmAndDeleteDossiers(dossiersASupprimer) {
+    if (!dossiersASupprimer || dossiersASupprimer.length === 0) {
+        return { status: 'none', deletedIds: new Set() };
+    }
+
+    const noms = [...new Set(
+        dossiersASupprimer.map(d => (d.nom && d.nom.trim()) || '(sans nom)')
+    )];
+    const liste = noms.map(nom => `- ${nom}`).join('\n');
+    const message = `ATTENTION !\n\n`
+        + `Les dossiers suivants vont être supprimés définitivement, `
+        + `avec l'intégralité de leur historique :\n\n${liste}\n\n`
+        + `Confirmer la suppression ?`;
+
+    if (!confirm(message)) {
+        return { status: 'cancelled', deletedIds: new Set() };
+    }
+
+    const deletedIds = new Set();
+    dossiersASupprimer.forEach(({ dossier }) => {
+        getDossierRecordIds(dossier).forEach(id => deletedIds.add(id));
+    });
+
+    if (deletedIds.size > 0) {
+        await grist.docApi.applyUserActions(
+            [...deletedIds].map(id => ['RemoveRecord', 'ODJ', id])
+        );
+    }
+
+    return { status: 'deleted', deletedIds };
+}
+
 // Fonction pour détecter et supprimer les doublons (en ignorant Enregistrement et id)
 async function removeDuplicateRecords() {
     const duplicateGroups = new Map();
@@ -627,7 +694,14 @@ async function removeDuplicateRecords() {
 // GESTION DES ÉVÉNEMENTS
 // ========================================
 
+let eventListenersAttached = false;
+
 function attachEventListeners() {
+    // Les éléments statiques ne doivent recevoir leurs écouteurs qu'une seule fois,
+    // même si grist.onRecord relance l'initialisation à chaque changement de curseur.
+    if (eventListenersAttached) return;
+    eventListenersAttached = true;
+
     // Onglets
     document.querySelectorAll('.tab-button').forEach(button => {
         button.addEventListener('click', switchTab);
@@ -675,9 +749,17 @@ function attachEventListeners() {
         consultEcheanceSelect.addEventListener('change', consultByEcheance);
     }
 
-    document.querySelectorAll('input[name="filter-etat"]').forEach(checkbox => {
-        checkbox.addEventListener('change', consultByPorteur);
-    });
+    // Filtres d'état (consultation par porteur) : les cases sont recréées
+    // dynamiquement par populateConsultSelectors(), on écoute donc sur le
+    // conteneur stable par délégation.
+    const filterEtatContainer = document.getElementById('filter-etat-checkboxes');
+    if (filterEtatContainer) {
+        filterEtatContainer.addEventListener('change', function (event) {
+            if (event.target.matches('input[name="filter-etat"]')) {
+                consultByPorteur();
+            }
+        });
+    }
 
     // Réunion
     const reunionDateSelect = document.getElementById('reunion-date-select');
@@ -728,7 +810,23 @@ function attachEventListeners() {
 
     const modifyPorteurDossierSelect = document.getElementById('modify-porteur-dossier-select');
     if (modifyPorteurDossierSelect) {
-        modifyPorteurDossierSelect.addEventListener('change', modifyByPorteurDossier);
+        modifyPorteurDossierSelect.addEventListener('change', handleModifyPorteurDossierSelectChange);
+    }
+
+    const modifyHideExpired = document.getElementById('modify-hide-expired');
+    if (modifyHideExpired) {
+        modifyHideExpired.addEventListener('change', handleModifyPorteurDossierSelectChange);
+    }
+
+    // Filtres d'état (modification par porteur) : cases recréées dynamiquement,
+    // délégation sur le conteneur stable.
+    const modifyFilterEtatContainer = document.getElementById('modify-filter-etat-checkboxes');
+    if (modifyFilterEtatContainer) {
+        modifyFilterEtatContainer.addEventListener('change', function (event) {
+            if (event.target.matches('input[name="modify-filter-etat"]')) {
+                handleModifyPorteurDossierSelectChange();
+            }
+        });
     }
 
     const modifyEcheanceSelect = document.getElementById('modify-echeance-select');
@@ -793,7 +891,7 @@ function attachEventListeners() {
     }
 }
 
-function switchTab(event) {
+async function switchTab(event) {
     const targetTab = event.target.dataset.tab;
 
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
@@ -807,6 +905,40 @@ function switchTab(event) {
 
     // Vider les sélections lors du changement d'onglet
     clearAllSelections();
+
+    // Recharger les données pour refléter les ajouts / modifications récents
+    // (ex. un dossier saisi doit apparaître immédiatement dans « Réunion »).
+    await refreshActiveTabData(targetTab);
+}
+
+/**
+ * Recharge les tables Grist puis rafraîchit les listes et affichages de
+ * l'onglet devenu actif.
+ * @param {string} targetTab - saisir | reunion | consulter | modifier
+ */
+async function refreshActiveTabData(targetTab) {
+    await loadAllTables();
+
+    // Listes communes (dates de réunion, échéances, porteurs, filtres d'état)
+    populateConsultSelectors();
+
+    if (targetTab === 'saisir') {
+        populateUpcomingMeetingsSelect();
+    } else if (targetTab === 'reunion') {
+        const select = document.getElementById('reunion-date-select');
+        const previousValue = select ? select.value : '';
+        populateReunionDateSelect();
+        if (select) {
+            if (previousValue && [...select.options].some(opt => opt.value === previousValue)) {
+                select.value = previousValue;
+            }
+            if (select.value) {
+                reunionDisplayData();
+            } else {
+                clearReunionDisplay();
+            }
+        }
+    }
 }
 
 function clearAllSelections() {
@@ -2210,11 +2342,22 @@ function handleModifyPorteurSelectChange() {
     // Peupler les cases à cocher d'état pour la modification
     populateModifyPorteurEtatFilters();
 
-    // Attacher les événements pour tri et filtrage
-    attachModifyPorteurFilterListeners();
-
     // Afficher tous les dossiers par défaut
     modifyByPorteurAllDossiers();
+}
+
+/**
+ * Rafraîchit l'affichage « Modifier par porteur » selon qu'un dossier précis
+ * est sélectionné ou non. Utilisé par le sélecteur de dossier, la case
+ * « Masquer les dossiers échus » et les filtres d'état (délégation).
+ */
+function handleModifyPorteurDossierSelectChange() {
+    const dossierSelect = document.getElementById('modify-porteur-dossier-select');
+    if (dossierSelect && dossierSelect.value !== '') {
+        modifyByPorteurDossier();
+    } else {
+        modifyByPorteurAllDossiers();
+    }
 }
 
 function populateModifyPorteurEtatFilters() {
@@ -2241,34 +2384,6 @@ function populateModifyPorteurEtatFilters() {
         label.appendChild(checkbox);
         label.appendChild(span);
         filterContainer.appendChild(label);
-    });
-}
-
-function attachModifyPorteurFilterListeners() {
-    document.querySelectorAll('input[name="modify-filter-etat"]').forEach(checkbox => {
-        checkbox.addEventListener('change', modifyByPorteurAllDossiers);
-    });
-
-    document.getElementById('modify-hide-expired')?.addEventListener('change', function () {
-        // Vérifier si un dossier spécifique est sélectionné
-        const dossierSelect = document.getElementById('modify-porteur-dossier-select');
-        if (dossierSelect && dossierSelect.value !== '') {
-            // Un dossier est sélectionné : appeler modifyByPorteurDossier
-            modifyByPorteurDossier();
-        } else {
-            // Aucun dossier sélectionné : afficher tous les dossiers
-            modifyByPorteurAllDossiers();
-        }
-    });
-
-    document.getElementById('modify-porteur-dossier-select')?.addEventListener('change', function () {
-        if (this.value === '') {
-            // Aucun dossier sélectionné : afficher tous les dossiers
-            modifyByPorteurAllDossiers();
-        } else {
-            // Dossier sélectionné : afficher l'historique de ce dossier
-            modifyByPorteurDossier();
-        }
     });
 }
 
@@ -2719,15 +2834,19 @@ async function saveModifications() {
 
         const type = modifyType.value;
 
+        let saved = true;
         if (type === 'date') {
-            await saveModificationsByDate();
+            saved = await saveModificationsByDate();
         } else if (type === 'dossier') {
-            await saveModificationsByDossier();
+            saved = await saveModificationsByDossier();
         } else if (type === 'porteur') {
-            await saveModificationsByPorteur();
+            saved = await saveModificationsByPorteur();
         } else if (type === 'echeance') {
-            await saveModificationsByEcheance();
+            saved = await saveModificationsByEcheance();
         }
+
+        // Suppression annulée par l'utilisateur : ne rien enregistrer
+        if (saved === false) return;
 
         alert('Modifications enregistrées avec succès !');
         await loadAllTables();
@@ -2856,36 +2975,20 @@ async function saveModificationsByDate() {
 
         // Identifier les dossiers à supprimer
         if (nouvelEtat === 'Supprimer le dossier') {
-            dossiersASupprimer.push({ id: dossier.id, nom: nouveauDossier });
+            dossiersASupprimer.push({ dossier, nom: nouveauDossier });
         }
     }
 
-    // Si des dossiers doivent être supprimés, demander une confirmation unique
-    if (dossiersASupprimer.length > 0) {
-        const listeDossiers = dossiersASupprimer.map(d => `- ${d.nom}`).join('\n');
-        const message = `ATTENTION ! Les dossiers suivants vont être supprimés :\n\n${listeDossiers}\n\nÊtes-vous sûr de vouloir confirmer cette action\u00A0?`;
-
-        const confirmation = confirm(message);
-
-        if (confirmation) {
-            // Supprimer tous les dossiers confirmés
-            for (const dossier of dossiersASupprimer) {
-                await grist.docApi.applyUserActions([
-                    ['RemoveRecord', 'ODJ', dossier.id]
-                ]);
-            }
-        } else {
-            // Annuler toute l'opération si l'utilisateur refuse
-            return;
-        }
-    }
+    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
+    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
+    if (deletionStatus === 'cancelled') return false;
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
         const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
 
-        // Ignorer les dossiers qui ont été supprimés
-        if (nouvelEtat === 'Supprimer le dossier') {
+        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
+        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
             continue;
         } else if (nouvelEtat) {
             // Mettre à jour la ligne existante avec le nouvel état
@@ -2981,36 +3084,20 @@ async function saveModificationsByDossier() {
 
         // Identifier les dossiers à supprimer
         if (nouvelEtat === 'Supprimer le dossier') {
-            dossiersASupprimer.push({ id: dossier.id, nom: nouveauDossier });
+            dossiersASupprimer.push({ dossier, nom: nouveauDossier });
         }
     }
 
-    // Si des dossiers doivent être supprimés, demander une confirmation unique
-    if (dossiersASupprimer.length > 0) {
-        const listeDossiers = dossiersASupprimer.map(d => `- ${d.nom}`).join('\n');
-        const message = `ATTENTION ! Les dossiers suivants vont être supprimés :\n\n${listeDossiers}\n\nÊtes-vous sûr de vouloir confirmer cette action\u00A0?`;
-
-        const confirmation = confirm(message);
-
-        if (confirmation) {
-            // Supprimer tous les dossiers confirmés
-            for (const dossier of dossiersASupprimer) {
-                await grist.docApi.applyUserActions([
-                    ['RemoveRecord', 'ODJ', dossier.id]
-                ]);
-            }
-        } else {
-            // Annuler toute l'opération si l'utilisateur refuse
-            return;
-        }
-    }
+    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
+    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
+    if (deletionStatus === 'cancelled') return false;
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
         const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
 
-        // Ignorer les dossiers qui ont été supprimés
-        if (nouvelEtat === 'Supprimer le dossier') {
+        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
+        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
             continue;
         } else if (nouvelEtat) {
             // Mettre à jour la ligne existante avec le nouvel état
@@ -3117,38 +3204,21 @@ async function saveModificationsByPorteur({ autoSave = false } = {}) {
 
             // Identifier les dossiers à supprimer
             if (nouvelEtat === 'Supprimer le dossier') {
-                dossiersASupprimer.push({ id: dossier.id, nom: nouveauDossier });
+                dossiersASupprimer.push({ dossier, nom: nouveauDossier });
             }
         }
     }
 
-    // Si des dossiers doivent être supprimés, demander une confirmation unique
-    // (ignoré en mode auto-save : les suppressions nécessitent une confirmation manuelle)
-    if (!autoSave && dossiersASupprimer.length > 0) {
-        const listeDossiers = dossiersASupprimer.map(d => `- ${d.nom}`).join('\n');
-        const message = `ATTENTION ! Les dossiers suivants vont être supprimés :\n\n${listeDossiers}\n\nÊtes-vous sûr de vouloir confirmer cette action\u00A0?`;
-
-        const confirmation = confirm(message);
-
-        if (confirmation) {
-            // Supprimer tous les dossiers confirmés
-            for (const dossier of dossiersASupprimer) {
-                await grist.docApi.applyUserActions([
-                    ['RemoveRecord', 'ODJ', dossier.id]
-                ]);
-            }
-        } else {
-            // Annuler toute l'opération si l'utilisateur refuse
-            return;
-        }
-    }
+    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
+    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
+    if (deletionStatus === 'cancelled') return false;
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
         const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
 
-        // Ignorer les dossiers qui ont été supprimés
-        if (nouvelEtat === 'Supprimer le dossier') {
+        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
+        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
             continue;
         }
 
@@ -3263,36 +3333,20 @@ async function saveModificationsByEcheance() {
 
         // Identifier les dossiers à supprimer
         if (nouvelEtat === 'Supprimer le dossier') {
-            dossiersASupprimer.push({ id: dossier.id, nom: nouveauDossier });
+            dossiersASupprimer.push({ dossier, nom: nouveauDossier });
         }
     }
 
-    // Si des dossiers doivent être supprimés, demander une confirmation unique
-    if (dossiersASupprimer.length > 0) {
-        const listeDossiers = dossiersASupprimer.map(d => `- ${d.nom}`).join('\n');
-        const message = `ATTENTION ! Les dossiers suivants vont être supprimés :\n\n${listeDossiers}\n\nÊtes-vous sûr de vouloir confirmer cette action\u00A0?`;
-
-        const confirmation = confirm(message);
-
-        if (confirmation) {
-            // Supprimer tous les dossiers confirmés
-            for (const dossier of dossiersASupprimer) {
-                await grist.docApi.applyUserActions([
-                    ['RemoveRecord', 'ODJ', dossier.id]
-                ]);
-            }
-        } else {
-            // Annuler toute l'opération si l'utilisateur refuse
-            return;
-        }
-    }
+    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
+    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
+    if (deletionStatus === 'cancelled') return false;
 
     // Deuxième passe : traiter les autres modifications
     for (const data of rowsData) {
         const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelEtat } = data;
 
-        // Ignorer les dossiers qui ont été supprimés
-        if (nouvelEtat === 'Supprimer le dossier') {
+        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
+        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
             continue;
         } else if (nouvelEtat) {
             // Mettre à jour la ligne existante avec le nouvel état
@@ -3743,7 +3797,13 @@ function scheduleModifyPorteurAutoSave() {
     modifyPorteurAutoSaveTimer = setTimeout(async () => {
         showModifyPorteurSaveStatus('saving');
         try {
-            await saveModificationsByPorteur({ autoSave: true });
+            const saved = await saveModificationsByPorteur({ autoSave: true });
+            if (saved === false) {
+                // Suppression annulée par l'utilisateur : on rouvre le formulaire tel quel
+                showModifyPorteurSaveStatus('idle');
+                reopenModifyForm();
+                return;
+            }
             await loadAllTables();
             await removeDuplicateRecords();
             await loadAllTables();
@@ -3844,6 +3904,7 @@ async function saveReunionModifications() {
         const tables = ['reunion-odj-table', 'reunion-echeance-table', 'reunion-expired-table'];
         const updateActions = [];
         const newDates = new Set(); // Pour collecter les nouvelles dates à ajouter à l'Agenda
+        const dossiersASupprimer = []; // Dossiers marqués « Supprimer le dossier »
 
         // Récupérer la date de réunion sélectionnée dans le sélecteur
         const reunionDateSelect = document.getElementById('reunion-date-select');
@@ -3913,9 +3974,12 @@ async function saveReunionModifications() {
                 const nouvelEtat = etatSelect ? etatSelect.value : '';
 
                 if (nouvelEtat === 'Supprimer le dossier') {
-                    // Supprimer le dossier
-                    updateActions.push(['RemoveRecord', 'ODJ', dossierId]);
-                } else if (nouvelEtat) {
+                    // Collecté pour suppression groupée après confirmation (tout l'historique)
+                    dossiersASupprimer.push({ dossier: dossierData, nom: nouveauDossier || dossierData.Dossier });
+                    continue;
+                }
+
+                if (nouvelEtat) {
                     // Ajouter une nouvelle ligne avec le nouvel état à la date de la réunion sélectionnée
                     const nouvelEtatId = getEtatIdByName(nouvelEtat);
                     const dateChangement = (reunionDateValue && !Number.isNaN(reunionDateValue))
@@ -3961,14 +4025,28 @@ async function saveReunionModifications() {
             }
         }
 
+        // Suppression de dossiers : confirmation unique puis suppression de tout l'historique
+        const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
+        if (deletionStatus === 'cancelled') {
+            showReunionSaveStatus('idle');
+            const selDate = document.getElementById('reunion-date-select');
+            if (selDate && selDate.value) reunionDisplayData();
+            return;
+        }
+
+        // Ne pas mettre à jour des lignes supprimées (marquées ou en cascade)
+        const actionsToApply = updateActions.filter(([actionType, , recordId]) =>
+            !(actionType === 'UpdateRecord' && deletedIds.has(recordId))
+        );
+
         // S'assurer que toutes les nouvelles dates existent dans l'Agenda avant d'appliquer les actions
         for (const date of newDates) {
             await ensureAgendaDateExists(date);
         }
 
         // Appliquer toutes les modifications en une seule action
-        if (updateActions.length > 0) {
-            await grist.docApi.applyUserActions(updateActions);
+        if (actionsToApply.length > 0) {
+            await grist.docApi.applyUserActions(actionsToApply);
         }
 
         await loadAllTables();
