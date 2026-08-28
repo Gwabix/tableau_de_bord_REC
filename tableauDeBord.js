@@ -394,7 +394,16 @@ function populateUpcomingMeetingsSelect() {
     const select = document.getElementById('saisir-reunions-suivantes');
     if (!select) return;
 
-    const upcomingDates = getUpcomingMeetingDates();
+    // Exclure la date déjà affichée dans le champ « Date de la réunion »
+    // (sinon la prochaine réunion apparaîtrait à la fois dans le champ et ici).
+    const dateInput = document.getElementById('saisir-date');
+    let currentTimestamp = null;
+    if (dateInput && dateInput.value) {
+        const t = Math.floor(new Date(dateInput.value).getTime() / 1000);
+        if (Number.isFinite(t)) currentTimestamp = t;
+    }
+
+    const upcomingDates = getUpcomingMeetingDates().filter(date => date !== currentTimestamp);
 
     select.innerHTML = '<option value="">-- Sélectionner une autre date --</option>';
 
@@ -867,6 +876,12 @@ function attachEventListeners() {
     // Autocomplete
     attachAutocompleteListeners();
 
+    // Champ « Date de la réunion » : tenir à jour la liste des autres dates
+    const saisirDateInput = document.getElementById('saisir-date');
+    if (saisirDateInput) {
+        saisirDateInput.addEventListener('change', populateUpcomingMeetingsSelect);
+    }
+
     // Menu déroulant des réunions suivantes
     const reunionsSuivantesSelect = document.getElementById('saisir-reunions-suivantes');
     if (reunionsSuivantesSelect) {
@@ -887,8 +902,9 @@ function attachEventListeners() {
                         }
                     }
                 }
-                // Réinitialiser le menu déroulant
+                // Réinitialiser le menu déroulant et exclure la date choisie
                 this.value = '';
+                populateUpcomingMeetingsSelect();
             }
         });
     }
