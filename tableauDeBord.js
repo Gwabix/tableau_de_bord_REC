@@ -1024,17 +1024,17 @@ function toggleMultiSelect(event) {
 function reorderMultiSelectOptions(container) {
     if (!container || !container.classList.contains('dossier-porteurs')) return;
 
+    const byName = (a, b) => (a.dataset.value || '')
+        .localeCompare(b.dataset.value || '', 'fr', { sensitivity: 'base' });
+
     const options = Array.from(container.querySelectorAll('.multi-select-option'));
-    const selected = options.filter(opt => opt.classList.contains('selected'));
-    const notSelected = options.filter(opt => !opt.classList.contains('selected'));
+    // Sélectionnés en haut, non-sélectionnés en dessous ; chaque groupe reste
+    // trié par ordre alphabétique (une option désélectionnée retrouve sa place).
+    const selected = options.filter(opt => opt.classList.contains('selected')).sort(byName);
+    const notSelected = options.filter(opt => !opt.classList.contains('selected')).sort(byName);
 
-    // Vider le conteneur
     container.innerHTML = '';
-
-    // Ajouter d'abord les sélectionnés, puis les non-sélectionnés
-    [...selected, ...notSelected].forEach(option => {
-        container.appendChild(option);
-    });
+    [...selected, ...notSelected].forEach(option => container.appendChild(option));
 }
 
 // ========================================
