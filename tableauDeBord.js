@@ -932,20 +932,28 @@ async function refreshActiveTabData(targetTab) {
     if (targetTab === 'saisir') {
         populateUpcomingMeetingsSelect();
     } else if (targetTab === 'reunion') {
-        const select = document.getElementById('reunion-date-select');
-        const previousValue = select ? select.value : '';
-        populateReunionDateSelect();
-        if (select) {
-            if (previousValue && [...select.options].some(opt => opt.value === previousValue)) {
-                select.value = previousValue;
-            }
-            if (select.value) {
-                reunionDisplayData();
-            } else {
-                clearReunionDisplay();
-            }
-        }
+        refreshReunionView();
     }
+}
+
+/**
+ * Repeuple le sélecteur de date de réunion en conservant la date choisie si
+ * elle existe toujours, puis réaffiche les tableaux de l'onglet Réunion.
+ * reunionDisplayData() vide l'affichage de lui-même si aucune date n'est
+ * sélectionnée.
+ */
+function refreshReunionView() {
+    const select = document.getElementById('reunion-date-select');
+    const previousValue = select ? select.value : '';
+
+    populateReunionDateSelect();
+
+    if (!select) return;
+
+    if (previousValue && [...select.options].some(opt => opt.value === previousValue)) {
+        select.value = previousValue;
+    }
+    reunionDisplayData();
 }
 
 function clearAllSelections() {
@@ -2254,8 +2262,8 @@ function readEditableRow(row, dossier) {
     const porteurSelect = row.querySelector('[data-col="porteurs"] select');
     const porteurs = porteurSelect
         ? Array.from(porteurSelect.selectedOptions)
-            .map(opt => getPersonneIdByName(opt.value))
-            .filter(id => id !== null)
+            .map(opt => (opt.dataset.porteurId ? Number(opt.dataset.porteurId) : getPersonneIdByName(opt.value)))
+            .filter(id => id !== null && id !== undefined && !Number.isNaN(id))
         : (Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_.filter(v => v !== 'L') : []);
 
     const actionsCell = row.querySelector('[data-col="actions"]');
@@ -2738,10 +2746,17 @@ function makeFieldsEditable(container) {
                 select.style.minHeight = '60px';
 
                 personnes.forEach(personne => {
+                    const personneId = getPersonneIdByName(personne);
                     const option = document.createElement('option');
                     option.value = personne;
                     option.textContent = personne;
-                    if (currentPorteurs.includes(getPersonneIdByName(personne))) {
+                    // L'ID est figé sur l'option : la lecture à la sauvegarde ne
+                    // dépend plus d'une correspondance nom -> ID (tablesData peut
+                    // avoir été rechargé entre-temps).
+                    if (personneId !== null && personneId !== undefined) {
+                        option.dataset.porteurId = String(personneId);
+                    }
+                    if (personneId !== null && currentPorteurs.includes(personneId)) {
                         option.selected = true;
                     }
                     select.appendChild(option);
@@ -2754,6 +2769,10 @@ function makeFieldsEditable(container) {
                         e.target.selected = !e.target.selected;
                         select.focus();
                         setTimeout(() => reorderSelectOptions(select), 10);
+                        // La sélection programmatique ne déclenche pas d'événement
+                        // natif : on le simule pour l'enregistrement automatique
+                        // (onglet Réunion, « Modifier par porteur »).
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 });
 
@@ -2838,16 +2857,20 @@ function reorderSelectOptions(select) {
     if (!select || select.tagName !== 'SELECT') return;
 
     const options = Array.from(select.options);
-    const selected = options.filter(opt => opt.selected);
-    const notSelected = options.filter(opt => !opt.selected);
+    const selectedValues = new Set(options.filter(opt => opt.selected).map(opt => opt.value));
 
-    // Vider le select
-    select.innerHTML = '';
+    // Réordonner en DÉPLAÇANT les noeuds (appendChild d'un enfant déjà présent
+    // = déplacement in-place). On évite `select.innerHTML = ''` qui, sur
+    // certains navigateurs, réinitialise la sélectedness des <option> à la
+    // ré-insertion -> la modification des porteurs était perdue.
+    const ordered = [
+        ...options.filter(opt => selectedValues.has(opt.value)),
+        ...options.filter(opt => !selectedValues.has(opt.value))
+    ];
+    ordered.forEach(opt => select.appendChild(opt));
 
-    // Ajouter d'abord les sélectionnés, puis les non-sélectionnés
-    [...selected, ...notSelected].forEach(option => {
-        select.appendChild(option);
-    });
+    // Réaffirmer la sélection par sécurité.
+    ordered.forEach(opt => { opt.selected = selectedValues.has(opt.value); });
 }
 
 async function saveModifications() {
@@ -3749,14 +3772,11 @@ async function saveReunionModifications() {
         await loadAllTables();
         await removeDuplicateRecords();
         await loadAllTables();
-        populateReunionDateSelect();
         populateConsultSelectors();
 
-        // Rafraîchir l'affichage avec la date sélectionnée
-        const select = document.getElementById('reunion-date-select');
-        if (select && select.value) {
-            reunionDisplayData();
-        }
+        // Rafraîchir l'affichage (conserve la date consultée ; les dossiers
+        // supprimés disparaissent, plus besoin de recharger le widget).
+        refreshReunionView();
 
         showReunionSaveStatus('saved');
 
