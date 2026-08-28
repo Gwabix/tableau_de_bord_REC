@@ -2314,10 +2314,17 @@ function readEditableRow(row, dossier) {
             : null;
     }
 
+    // Date de réunion : éditable mais obligatoire — un champ vidé garde l'ancienne valeur.
+    const dateReunionInput = row.querySelector('[data-col="date-reunion"] input[type="date"]');
+    let dateReunion = dossier.Date_de_la_reunion;
+    if (dateReunionInput && dateReunionInput.value) {
+        dateReunion = Math.floor(new Date(dateReunionInput.value).getTime() / 1000);
+    }
+
     const etatChangeSelect = row.querySelector('.etat-change-select');
     const changementEtat = etatChangeSelect ? etatChangeSelect.value : '';
 
-    return { nomCellule, porteurs, actions, echeance, changementEtat };
+    return { nomCellule, porteurs, actions, echeance, dateReunion, changementEtat };
 }
 
 /** Affiche le sélecteur correspondant au mode « Modifier » (date/dossier/porteur/échéance). */
@@ -2826,14 +2833,18 @@ function makeFieldsEditable(container) {
                 td.appendChild(select);
                 td.style.padding = '4px';
                 reorderSelectOptions(select);
-            } else if (col === 'echeance' && dossierData) {
+            } else if ((col === 'echeance' || col === 'date-reunion') && dossierData) {
+                const sourceTs = col === 'echeance'
+                    ? dossierData.Echeance
+                    : dossierData.Date_de_la_reunion;
+
                 const dateInput = document.createElement('input');
                 dateInput.type = 'date';
                 applyStyle(dateInput, EDITABLE_CONTROL_STYLE);
                 dateInput.style.padding = '4px';
 
-                if (dossierData.Echeance) {
-                    dateInput.value = new Date(dossierData.Echeance * 1000).toISOString().split('T')[0];
+                if (sourceTs) {
+                    dateInput.value = new Date(sourceTs * 1000).toISOString().split('T')[0];
                 }
 
                 td.innerHTML = '';
@@ -2939,6 +2950,8 @@ function modifyRowHasChanges(dossier, v) {
 
     if ((v.echeance ?? null) !== (dossier.Echeance ?? null)) return true;
 
+    if ((v.dateReunion ?? null) !== (dossier.Date_de_la_reunion ?? null)) return true;
+
     const orig = (Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_ : [])
         .filter(x => x !== 'L').map(Number).sort((a, b) => a - b);
     const next = [...(v.porteurs || [])].map(Number).sort((a, b) => a - b);
@@ -2949,13 +2962,14 @@ function modifyRowHasChanges(dossier, v) {
 
 /**
  * Actions Grist pour enregistrer l'état modifié d'un dossier : upsert de la
- * ligne du jour (même date de réunion que la ligne éditée).
+ * ligne du jour, à la date de réunion (éventuellement modifiée) de la ligne.
  */
 function buildModifyUpsertActions(dossier, v) {
-    const dateReunion = dossier.Date_de_la_reunion;
+    const dateReunion = v.dateReunion ?? dossier.Date_de_la_reunion;
     const existingToday = findTodayRecord(dossier, dateReunion);
 
     const data = {
+        Date_de_la_reunion: dateReunion,
         Dossier: v.nouveauDossier ?? dossier.Dossier,
         ID_Dossier: dossier.ID_Dossier || '',
         Porteur_s_: ['L', ...v.nouveauxPorteurs],
@@ -2967,7 +2981,7 @@ function buildModifyUpsertActions(dossier, v) {
 
     return existingToday
         ? [['UpdateRecord', 'ODJ', existingToday.id, data]]
-        : [['AddRecord', 'ODJ', null, { ...data, Date_de_la_reunion: dateReunion }]];
+        : [['AddRecord', 'ODJ', null, data]];
 }
 
 /** Toutes les <tr> éditables actuellement affichées dans l'onglet Modifier. */
@@ -2999,6 +3013,7 @@ function collectModifyRows(resolveNom) {
             nouveauxPorteurs: edited.porteurs,
             actions: edited.actions,
             nouvelleEcheance: edited.echeance,
+            dateReunion: edited.dateReunion,
             nouvelEtat: edited.changementEtat
         };
         v.hasChanges = modifyRowHasChanges(dossier, {
@@ -3006,6 +3021,7 @@ function collectModifyRows(resolveNom) {
             porteurs: edited.porteurs,
             actions: edited.actions,
             echeance: edited.echeance,
+            dateReunion: edited.dateReunion,
             changementEtat: edited.changementEtat
         });
 
@@ -3548,6 +3564,7 @@ async function saveReunionModifications() {
                 const nouveauxPorteurs = edited.porteurs;
                 const actions = edited.actions;
                 const nouvelleEcheance = edited.echeance;
+                const nouvelleDateReunion = edited.dateReunion;
                 const nouvelEtat = edited.changementEtat;
 
                 if (nouvelEtat === 'Supprimer le dossier') {
@@ -3594,6 +3611,7 @@ async function saveReunionModifications() {
 
                 // Toujours mettre à jour la ligne existante
                 updateActions.push(['UpdateRecord', 'ODJ', dossierId, {
+                    Date_de_la_reunion: nouvelleDateReunion,
                     Dossier: nouveauDossier,
                     Porteur_s_: ['L', ...nouveauxPorteurs],
                     Actions_a_mettre_en_uvre_etapes: actions,
