@@ -2278,8 +2278,12 @@ function readEditableRow(row, dossier) {
 
     const echeanceInput = row.querySelector('[data-col="echeance"] input[type="date"]');
     let echeance = dossier.Echeance;
-    if (echeanceInput && echeanceInput.value) {
-        echeance = Math.floor(new Date(echeanceInput.value).getTime() / 1000);
+    if (echeanceInput) {
+        // Colonne « Échéance » éditable : on prend la valeur du champ.
+        // Champ vidé (bouton d'effacement du date-picker) => échéance retirée.
+        echeance = echeanceInput.value
+            ? Math.floor(new Date(echeanceInput.value).getTime() / 1000)
+            : null;
     }
 
     const etatChangeSelect = row.querySelector('.etat-change-select');
@@ -2888,9 +2892,141 @@ function reorderSelectOptions(select) {
     ordered.forEach(opt => { opt.selected = selectedValues.has(opt.value); });
 }
 
+// ----------------------------------------
+// Enregistrement des modifications (onglet Modifier)
+//
+// Toute modification est écrite comme une NOUVELLE ligne ODJ datée
+// d'aujourd'hui (Enregistrement = maintenant), pour suivre l'évolution du
+// dossier même hors réunion. Une seule ligne par dossier et par jour : si une
+// ligne a déjà été créée aujourd'hui pour ce dossier à cette date de réunion,
+// elle est mise à jour (findTodayRecord).
+// ----------------------------------------
+
+/** true si la ligne éditée diffère de l'enregistrement source. */
+function modifyRowHasChanges(dossier, v) {
+    if (v.changementEtat) return true;
+
+    if (v.nouveauDossier !== null && v.nouveauDossier !== (dossier.Dossier || '')) return true;
+
+    if ((v.actions || '').trim() !== (dossier.Actions_a_mettre_en_uvre_etapes || '').trim()) return true;
+
+    if ((v.echeance ?? null) !== (dossier.Echeance ?? null)) return true;
+
+    const orig = (Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_ : [])
+        .filter(x => x !== 'L').map(Number).sort((a, b) => a - b);
+    const next = [...(v.porteurs || [])].map(Number).sort((a, b) => a - b);
+    if (orig.length !== next.length || orig.some((x, i) => x !== next[i])) return true;
+
+    return false;
+}
+
+/**
+ * Actions Grist pour enregistrer l'état modifié d'un dossier : upsert de la
+ * ligne du jour (même date de réunion que la ligne éditée).
+ */
+function buildModifyUpsertActions(dossier, v) {
+    const dateReunion = dossier.Date_de_la_reunion;
+    const existingToday = findTodayRecord(dossier, dateReunion);
+
+    const data = {
+        Dossier: v.nouveauDossier ?? dossier.Dossier,
+        ID_Dossier: dossier.ID_Dossier || '',
+        Porteur_s_: ['L', ...v.nouveauxPorteurs],
+        Actions_a_mettre_en_uvre_etapes: v.actions,
+        Echeance: v.nouvelleEcheance ?? null,
+        Etat: v.nouvelEtat ? getEtatIdByName(v.nouvelEtat) : dossier.Etat,
+        Enregistrement: Date.now() / 1000
+    };
+
+    return existingToday
+        ? [['UpdateRecord', 'ODJ', existingToday.id, data]]
+        : [['AddRecord', 'ODJ', null, { ...data, Date_de_la_reunion: dateReunion }]];
+}
+
+/** Toutes les <tr> éditables actuellement affichées dans l'onglet Modifier. */
+function getModifyResultRows() {
+    const modifyResults = document.getElementById('modify-results');
+    if (!modifyResults) return [];
+    return [...modifyResults.querySelectorAll('table tbody tr')];
+}
+
+/**
+ * Première passe : lit chaque ligne affichée, calcule les changements et
+ * repère les dossiers marqués « Supprimer le dossier ».
+ * @param {(dossier: object, edited: object) => (string|null)} resolveNom
+ */
+function collectModifyRows(resolveNom) {
+    const rowsData = [];
+    const dossiersASupprimer = [];
+
+    for (const row of getModifyResultRows()) {
+        const dossierId = Number.parseInt(row.dataset.dossierId, 10);
+        const dossier = tablesData.ODJ.find(d => d.id === dossierId);
+        if (!dossier) continue;
+
+        const edited = readEditableRow(row, dossier);
+        const nouveauDossier = resolveNom(dossier, edited);
+        const v = {
+            dossier,
+            nouveauDossier,
+            nouveauxPorteurs: edited.porteurs,
+            actions: edited.actions,
+            nouvelleEcheance: edited.echeance,
+            nouvelEtat: edited.changementEtat
+        };
+        v.hasChanges = modifyRowHasChanges(dossier, {
+            nouveauDossier,
+            porteurs: edited.porteurs,
+            actions: edited.actions,
+            echeance: edited.echeance,
+            changementEtat: edited.changementEtat
+        });
+
+        rowsData.push(v);
+        if (edited.changementEtat === 'Supprimer le dossier') {
+            dossiersASupprimer.push({ dossier, nom: nouveauDossier });
+        }
+    }
+
+    return { rowsData, dossiersASupprimer };
+}
+
+/**
+ * Deuxième passe : applique les modifications (une seule action groupée).
+ * @returns {Promise<boolean>} true si au moins une écriture a eu lieu
+ */
+async function processModifyRows(rowsData, deletedIds) {
+    const actions = [];
+    for (const v of rowsData) {
+        if (v.nouvelEtat === 'Supprimer le dossier') continue;
+        if (deletedIds.has(v.dossier.id)) continue;
+        if (!v.hasChanges) continue;
+        actions.push(...buildModifyUpsertActions(v.dossier, v));
+    }
+    if (actions.length === 0) return false;
+    await grist.docApi.applyUserActions(actions);
+    return true;
+}
+
+/**
+ * Enchaînement commun à tous les modes : collecte -> suppression -> upsert.
+ * @returns {Promise<'saved'|'nochange'|'cancelled'>}
+ */
+async function runModifySave(resolveNom) {
+    if (getModifyResultRows().length === 0) return 'nochange';
+
+    const { rowsData, dossiersASupprimer } = collectModifyRows(resolveNom);
+
+    const { status, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
+    if (status === 'cancelled') return 'cancelled';
+
+    const wrote = await processModifyRows(rowsData, deletedIds);
+    return (wrote || status === 'deleted') ? 'saved' : 'nochange';
+}
+
 /**
  * Exécute la sauvegarde correspondant au mode « Modifier » courant.
- * @returns {Promise<boolean|undefined>} false si l'utilisateur a annulé une suppression
+ * @returns {Promise<'saved'|'nochange'|'cancelled'>}
  */
 function runModifySaveByType() {
     switch (modifyContext.type) {
@@ -2898,7 +3034,7 @@ function runModifySaveByType() {
         case 'dossier': return saveModificationsByDossier();
         case 'porteur': return saveModificationsByPorteur();
         case 'echeance': return saveModificationsByEcheance();
-        default: return Promise.resolve(true);
+        default: return Promise.resolve('nochange');
     }
 }
 
@@ -2949,394 +3085,29 @@ function reopenModifyForm() {
 }
 
 async function saveModificationsByDate() {
-    const dateSelect = document.getElementById('modify-date-select');
-    if (!dateSelect) return;
-
-    const date = dateSelect.value;
-    if (!date) return;
-
-    const modifyResults = document.getElementById('modify-results');
-
-    const table = modifyResults.querySelector('table tbody');
-    if (!table) return;
-
-    const rows = table.querySelectorAll('tr');
-
-    // Première passe : collecter tous les dossiers à supprimer
-    const dossiersASupprimer = [];
-    const rowsData = [];
-
-    for (let index = 0; index < rows.length; index++) {
-        const row = rows[index];
-        const dossierId = Number.parseInt(row.dataset.dossierId);
-
-        // Trouver le dossier correspondant par son ID
-        const dossier = tablesData.ODJ.find(d => d.id === dossierId);
-        if (!dossier) continue;
-
-        const edited = readEditableRow(row, dossier);
-        const nouveauDossier = edited.nomCellule;
-        const nouveauxPorteurs = edited.porteurs;
-        const actions = edited.actions;
-        const nouvelleEcheance = edited.echeance;
-        const nouvelEtat = edited.changementEtat;
-
-        // Stocker les données pour traitement ultérieur
-        rowsData.push({
-            dossier,
-            nouveauDossier,
-            nouveauxPorteurs,
-            actions,
-            nouvelleEcheance,
-            nouvelEtat
-        });
-
-        // Identifier les dossiers à supprimer
-        if (nouvelEtat === 'Supprimer le dossier') {
-            dossiersASupprimer.push({ dossier, nom: nouveauDossier });
-        }
-    }
-
-    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
-    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
-    if (deletionStatus === 'cancelled') return false;
-
-    // Deuxième passe : traiter les autres modifications
-    for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
-
-        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
-        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
-            continue;
-        } else if (nouvelEtat) {
-            // Mettre à jour la ligne existante avec le nouvel état
-            const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance,
-                    Etat: nouveauEtatId
-                }]
-            ]);
-        } else {
-            // Mise à jour de la ligne existante avec toutes les modifications
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance
-                }]
-            ]);
-        }
-    }
+    return runModifySave((dossier, edited) => edited.nomCellule);
 }
 
 async function saveModificationsByDossier() {
-    const modifyResults = document.getElementById('modify-results');
-    if (!modifyResults) return;
-
-    const table = modifyResults.querySelector('table tbody');
-    if (!table) return;
-
-    const rows = table.querySelectorAll('tr');
-
-    let dossierName = '';
     const dossierInput = document.getElementById('modify-dossier-input');
-    if (dossierInput) {
-        dossierName = dossierInput.value;
-    }
-
-    if (!dossierName) return;
-
-    // Première passe : collecter tous les dossiers à supprimer
-    const dossiersASupprimer = [];
-    const rowsData = [];
-
-    for (let index = 0; index < rows.length; index++) {
-        const row = rows[index];
-        const dossierId = Number.parseInt(row.dataset.dossierId);
-
-        // Trouver le dossier correspondant par son ID
-        const dossier = tablesData.ODJ.find(d => d.id === dossierId);
-        if (!dossier) continue;
-
-        const edited = readEditableRow(row, dossier);
-        const nouveauDossier = dossierName;
-        const nouveauxPorteurs = edited.porteurs;
-        const actions = edited.actions;
-        const nouvelleEcheance = edited.echeance;
-        const nouvelEtat = edited.changementEtat;
-
-        // Stocker les données pour traitement ultérieur
-        rowsData.push({
-            dossier,
-            nouveauDossier,
-            nouveauxPorteurs,
-            actions,
-            nouvelleEcheance,
-            nouvelEtat
-        });
-
-        // Identifier les dossiers à supprimer
-        if (nouvelEtat === 'Supprimer le dossier') {
-            dossiersASupprimer.push({ dossier, nom: nouveauDossier });
-        }
-    }
-
-    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
-    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
-    if (deletionStatus === 'cancelled') return false;
-
-    // Deuxième passe : traiter les autres modifications
-    for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
-
-        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
-        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
-            continue;
-        } else if (nouvelEtat) {
-            // Mettre à jour la ligne existante avec le nouvel état
-            const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance,
-                    Etat: nouveauEtatId
-                }]
-            ]);
-        } else {
-            // Mise à jour de la ligne existante avec toutes les modifications
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance
-                }]
-            ]);
-        }
-    }
+    const dossierName = dossierInput ? dossierInput.value.trim() : '';
+    if (!dossierName) return 'nochange';
+    // Le nom n'est pas modifiable dans ce mode : on garde celui du dossier.
+    return runModifySave(dossier => dossier.Dossier);
 }
 
 async function saveModificationsByPorteur() {
-    const modifyResults = document.getElementById('modify-results');
-    if (!modifyResults) return;
-
-    // Récupérer le porteur sélectionné
     const porteurSelect = document.getElementById('modify-porteur-select');
-    if (!porteurSelect) return;
-
-    const porteurName = porteurSelect.value;
-    const porteurId = getPersonneIdByName(porteurName);
-    if (!porteurName || !porteurId) return;
-
-    // Récupérer le dossier sélectionné (vide = mode tous les dossiers)
     const dossierSelect = document.getElementById('modify-porteur-dossier-select');
-    if (!dossierSelect) return;
+    if (!porteurSelect || !porteurSelect.value) return 'nochange';
 
-    const dossierName = dossierSelect.value;
+    const dossierName = dossierSelect ? dossierSelect.value : '';
     const isAllDossiers = !dossierName;
-
-    // Récupérer toutes les lignes (plusieurs tables en mode tous les dossiers)
-    const tables = modifyResults.querySelectorAll('table tbody');
-    if (tables.length === 0) return;
-
-    const now = Date.now() / 1000;
-
-    // Première passe : collecter tous les dossiers à supprimer
-    const dossiersASupprimer = [];
-    const rowsData = [];
-
-    for (const tableBody of tables) {
-        const rows = tableBody.querySelectorAll('tr');
-
-        for (const row of rows) {
-            const dossierId = Number.parseInt(row.dataset.dossierId);
-
-            // Trouver le dossier correspondant par son ID
-            const dossier = tablesData.ODJ.find(d => d.id === dossierId);
-            if (!dossier) continue;
-
-            const edited = readEditableRow(row, dossier);
-            const nouveauDossier = isAllDossiers ? dossier.Dossier : dossierName;
-            const nouveauxPorteurs = edited.porteurs;
-            const actions = edited.actions;
-            const nouvelleEcheance = edited.echeance;
-            const nouvelEtat = edited.changementEtat;
-
-            // Stocker les données pour traitement ultérieur
-            rowsData.push({
-                dossier,
-                nouveauDossier,
-                nouveauxPorteurs,
-                actions,
-                nouvelleEcheance,
-                nouvelEtat
-            });
-
-            // Identifier les dossiers à supprimer
-            if (nouvelEtat === 'Supprimer le dossier') {
-                dossiersASupprimer.push({ dossier, nom: nouveauDossier });
-            }
-        }
-    }
-
-    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
-    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
-    if (deletionStatus === 'cancelled') return false;
-
-    // Deuxième passe : traiter les autres modifications
-    for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelleEcheance, nouvelEtat } = data;
-
-        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
-        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
-            continue;
-        }
-
-        if (isAllDossiers && nouvelEtat) {
-            // Mode tous les dossiers + changement d'état → enregistrement automatique avec upsert par jour
-            const nouveauEtatId = getEtatIdByName(nouvelEtat);
-            const existingToday = findTodayRecord(dossier, dossier.Date_de_la_reunion);
-
-            const odjData = {
-                Dossier: nouveauDossier,
-                ID_Dossier: dossier.ID_Dossier || '',
-                Porteur_s_: ['L', ...nouveauxPorteurs],
-                Actions_a_mettre_en_uvre_etapes: actions,
-                Echeance: nouvelleEcheance,
-                Etat: nouveauEtatId,
-                Enregistrement: now
-            };
-
-            if (existingToday) {
-                await grist.docApi.applyUserActions([
-                    ['UpdateRecord', 'ODJ', existingToday.id, odjData]
-                ]);
-            } else {
-                await grist.docApi.applyUserActions([
-                    ['AddRecord', 'ODJ', null, {
-                        ...odjData,
-                        Date_de_la_reunion: dossier.Date_de_la_reunion
-                    }]
-                ]);
-            }
-        } else if (nouvelEtat) {
-            // Mode dossier spécifique + changement d'état → mise à jour en place
-            const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance,
-                    Etat: nouveauEtatId
-                }]
-            ]);
-        } else {
-            // Pas de changement d'état → mise à jour simple en place
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Echeance: nouvelleEcheance
-                }]
-            ]);
-        }
-    }
+    return runModifySave(dossier => (isAllDossiers ? dossier.Dossier : dossierName));
 }
 
 async function saveModificationsByEcheance() {
-    const modifyResults = document.getElementById('modify-results');
-    if (!modifyResults) return;
-
-    const table = modifyResults.querySelector('table tbody');
-    if (!table) return;
-
-    const rows = table.querySelectorAll('tr');
-
-    const echeanceSelect = document.getElementById('modify-echeance-select');
-    if (!echeanceSelect) return;
-
-    const echeance = echeanceSelect.value;
-    if (!echeance) return;
-
-    // Première passe : collecter tous les dossiers à supprimer
-    const dossiersASupprimer = [];
-    const rowsData = [];
-
-    for (let index = 0; index < rows.length; index++) {
-        const row = rows[index];
-        const dossierId = Number.parseInt(row.dataset.dossierId);
-
-        // Trouver le dossier correspondant par son ID
-        const dossier = tablesData.ODJ.find(d => d.id === dossierId);
-        if (!dossier) continue;
-
-        const edited = readEditableRow(row, dossier);
-        const nouveauDossier = edited.nomCellule;
-        const nouveauxPorteurs = edited.porteurs;
-        const actions = edited.actions;
-        const nouvelEtat = edited.changementEtat;
-
-        // Stocker les données pour traitement ultérieur
-        rowsData.push({
-            dossier,
-            nouveauDossier,
-            nouveauxPorteurs,
-            actions,
-            nouvelEtat
-        });
-
-        // Identifier les dossiers à supprimer
-        if (nouvelEtat === 'Supprimer le dossier') {
-            dossiersASupprimer.push({ dossier, nom: nouveauDossier });
-        }
-    }
-
-    // Suppression : confirmation unique puis suppression de tout l'historique du dossier.
-    const { status: deletionStatus, deletedIds } = await confirmAndDeleteDossiers(dossiersASupprimer);
-    if (deletionStatus === 'cancelled') return false;
-
-    // Deuxième passe : traiter les autres modifications
-    for (const data of rowsData) {
-        const { dossier, nouveauDossier, nouveauxPorteurs, actions, nouvelEtat } = data;
-
-        // Ignorer les dossiers supprimés (marqués ou supprimés en cascade)
-        if (nouvelEtat === 'Supprimer le dossier' || deletedIds.has(dossier.id)) {
-            continue;
-        } else if (nouvelEtat) {
-            // Mettre à jour la ligne existante avec le nouvel état
-            const nouveauEtatId = getEtatIdByName(nouvelEtat);
-
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions,
-                    Etat: nouveauEtatId
-                }]
-            ]);
-        } else {
-            // Mise à jour de la ligne existante avec toutes les modifications
-            await grist.docApi.applyUserActions([
-                ['UpdateRecord', 'ODJ', dossier.id, {
-                    Dossier: nouveauDossier,
-                    Porteur_s_: ['L', ...nouveauxPorteurs],
-                    Actions_a_mettre_en_uvre_etapes: actions
-                }]
-            ]);
-        }
-    }
+    return runModifySave((dossier, edited) => edited.nomCellule);
 }
 
 async function closeModifyForm() {
@@ -3608,15 +3379,23 @@ async function performModifyAutoSave() {
     modifyAutoSaveInFlight = true;
     showModifySaveStatus('saving');
     try {
-        const saved = await runModifySaveByType();
-        if (saved === false) {
+        const outcome = await runModifySaveByType();
+
+        if (outcome === 'cancelled') {
             // Suppression annulée : on rouvre le formulaire tel quel
             showModifySaveStatus('idle');
             reopenModifyForm();
             return;
         }
-        await loadAllTables();
-        await removeDuplicateRecords();
+        if (outcome === 'nochange') {
+            // Rien à écrire : pas de rechargement, pas de reconstruction du tableau
+            showModifySaveStatus('idle');
+            return;
+        }
+
+        // Pas de removeDuplicateRecords ici : l'upsert par jour (findTodayRecord)
+        // empêche déjà les doublons, et une déduplication globale supprimerait
+        // à tort une ligne d'historique identique à un état antérieur du dossier.
         await loadAllTables();
         populateConsultSelectors();
         reopenModifyForm();
@@ -3820,8 +3599,9 @@ async function saveReunionModifications() {
             await grist.docApi.applyUserActions(actionsToApply);
         }
 
-        await loadAllTables();
-        await removeDuplicateRecords();
+        // Pas de removeDuplicateRecords : l'upsert par jour évite déjà les
+        // doublons et une déduplication globale effacerait des lignes
+        // d'historique légitimes (retour à un état antérieur).
         await loadAllTables();
         populateConsultSelectors();
 
