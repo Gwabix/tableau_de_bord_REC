@@ -2414,7 +2414,7 @@ function modifyByDossier(dossierName) {
 
     // Résoudre l'ID_Dossier à partir du nom saisi, puis inclure tous les records partageant cet ID
     const refRecord = tablesData.ODJ.find(odj => odj.Dossier === dossierName && odj.ID_Dossier);
-    const dossiers = refRecord
+    let dossiers = refRecord
         ? tablesData.ODJ.filter(odj => odj.ID_Dossier === refRecord.ID_Dossier)
         : tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
 
@@ -2425,13 +2425,11 @@ function modifyByDossier(dossierName) {
         return;
     }
 
-    dossiers.sort((a, b) => {
-        const dateA = a.Date_de_la_reunion ? new Date(a.Date_de_la_reunion) : new Date(0);
-        const dateB = b.Date_de_la_reunion ? new Date(b.Date_de_la_reunion) : new Date(0);
-        return dateB - dateA;
-    });
+    // On ne modifie que la dernière version en date ; l'historique complet se
+    // consulte dans l'onglet « Consulter ».
+    dossiers = getLatestEntriesPerDossier(dossiers);
 
-    let html = '<div class="section"><h2 class="section-title">Historique du dossier</h2>';
+    let html = '<div class="section"><h2 class="section-title">Dernière version du dossier</h2>';
     html += '<div class="table-container">';
     html += buildDossierTable(dossiers, ['date-reunion', 'porteurs', 'actions', 'echeance', 'etat', 'date-enr', 'change']);
     html += '</div></div>';
@@ -2652,11 +2650,10 @@ function modifyByPorteurDossier() {
     modifyContext.value = porteurName;
     modifyContext.secondValue = dossierName;
 
-    // Afficher l'historique du dossier
     const resultsDiv = document.getElementById('modify-results');
     if (!resultsDiv) return;
 
-    const dossiers = tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
+    let dossiers = tablesData.ODJ.filter(odj => odj.Dossier === dossierName);
 
     if (dossiers.length === 0) {
         resultsDiv.innerHTML = '<p class="no-results">Aucun dossier trouvé</p>';
@@ -2665,15 +2662,12 @@ function modifyByPorteurDossier() {
         return;
     }
 
-    dossiers.sort((a, b) => {
-        const dateA = a.Date_de_la_reunion ? new Date(a.Date_de_la_reunion) : new Date(0);
-        const dateB = b.Date_de_la_reunion ? new Date(b.Date_de_la_reunion) : new Date(0);
-        return dateB - dateA;
-    });
+    // On ne modifie que la dernière version en date (historique dans « Consulter »).
+    dossiers = getLatestEntriesPerDossier(dossiers);
 
-    let html = `<div class="section"><h2 class="section-title">Historique du dossier : ${escapeHtml(dossierName)}</h2>`;
+    let html = `<div class="section"><h2 class="section-title">Dernière version du dossier : ${escapeHtml(dossierName)}</h2>`;
     html += '<div class="table-container">';
-    html += buildDossierTable(dossiers, ['date-reunion', 'porteurs', 'actions', 'echeance', 'etat', 'change']);
+    html += buildDossierTable(dossiers, ['date-reunion', 'porteurs', 'actions', 'echeance', 'etat', 'date-enr', 'change']);
     html += '</div></div>';
     resultsDiv.innerHTML = html;
 
