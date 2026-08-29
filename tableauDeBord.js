@@ -2816,16 +2816,28 @@ function applyStyle(el, style) {
 
 /**
  * Insère un saut de ligne (<br>) à la position du curseur, sans execCommand.
+ * En fin de bloc, un <br> seul n'est pas rendu : on ajoute un <br> témoin
+ * après et on place le curseur entre les deux (sinon il faut appuyer deux
+ * fois sur Entrée).
  */
 function insertLineBreakAtCaret() {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
+
     const range = selection.getRangeAt(0);
-    const br = document.createElement('br');
     range.deleteContents();
+
+    const br = document.createElement('br');
     range.insertNode(br);
+
+    const next = br.nextSibling;
+    const atEnd = !next || (next.nodeType === Node.TEXT_NODE && next.textContent === '');
+    if (atEnd) {
+        br.parentNode.insertBefore(document.createElement('br'), br.nextSibling);
+    }
+
     range.setStartAfter(br);
-    range.setEndAfter(br);
+    range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
 }
@@ -2901,6 +2913,10 @@ function makeFieldsEditable(container) {
             if (col === 'dossier') {
                 td.contentEditable = true;
                 applyStyle(td, EDITABLE_CELL_STYLE);
+                // Champ mono-ligne : pas de saut de ligne.
+                td.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter') event.preventDefault();
+                });
                 td.addEventListener('paste', function (event) {
                     if (!event.clipboardData) return;
                     event.preventDefault();
