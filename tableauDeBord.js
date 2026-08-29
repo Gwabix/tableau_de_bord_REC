@@ -449,7 +449,7 @@ function buildEtatFilterCheckboxes(container, name) {
     };
 
     etats.forEach(etat => addCheckbox(etat, etat));
-    addCheckbox('', 'Non renseigné');
+    addCheckbox('', 'État non renseigné');
 }
 
 function generateDossierID() {
