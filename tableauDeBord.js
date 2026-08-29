@@ -234,6 +234,116 @@ function initializeUI() {
     populateConsultSelectors();
     populateReunionDateSelect();
     setDefaultDate();
+    restoreSaisirDraft();
+}
+
+// ========================================
+// BROUILLON LOCAL - ONGLET SAISIR
+// (l'onglet Saisir n'a pas d'enregistrement automatique : on garde une copie
+//  locale pour ne rien perdre en cas de fermeture / plantage avant « Valider »)
+// ========================================
+
+const SAISIR_DRAFT_KEY = 'tdb-rec-saisir-draft';
+
+function serializeSaisirForm() {
+    const container = document.getElementById('saisir-dossiers');
+    if (!container) return null;
+
+    const dossiers = [...container.querySelectorAll('.dossier-block')].map(block => ({
+        intitule: block.querySelector('.dossier-intitule')?.value || '',
+        actions: block.querySelector('.dossier-actions')?.value || '',
+        echeance: block.querySelector('.dossier-echeance')?.value || '',
+        etat: block.querySelector('.dossier-etat')?.value || '',
+        porteurs: [...block.querySelectorAll('.dossier-porteurs .multi-select-option.selected')]
+            .map(el => el.dataset.value)
+    }));
+
+    return {
+        date: document.getElementById('saisir-date')?.value || '',
+        dossiers
+    };
+}
+
+function saveSaisirDraft() {
+    try {
+        if (saisirFormIsPristine()) {
+            localStorage.removeItem(SAISIR_DRAFT_KEY);
+        } else {
+            localStorage.setItem(SAISIR_DRAFT_KEY, JSON.stringify(serializeSaisirForm()));
+        }
+    } catch (e) {
+        // localStorage indisponible (navigation privée, quota…) : on ignore.
+    }
+}
+
+function clearSaisirDraft() {
+    try {
+        localStorage.removeItem(SAISIR_DRAFT_KEY);
+    } catch (e) { /* ignore */ }
+}
+
+function restoreSaisirDraft() {
+    let draft;
+    try {
+        const raw = localStorage.getItem(SAISIR_DRAFT_KEY);
+        if (!raw) return;
+        draft = JSON.parse(raw);
+    } catch (e) {
+        return;
+    }
+
+    const dossiers = draft && Array.isArray(draft.dossiers) ? draft.dossiers : [];
+    const meaningful = dossiers.some(d =>
+        d.intitule || d.actions || d.echeance || d.etat || (Array.isArray(d.porteurs) && d.porteurs.length)
+    );
+    if (!meaningful) {
+        clearSaisirDraft();
+        return;
+    }
+
+    if (!confirm('Une saisie non terminée a été retrouvée. La restaurer ?')) {
+        clearSaisirDraft();
+        return;
+    }
+
+    const container = document.getElementById('saisir-dossiers');
+    if (!container) return;
+
+    while (container.querySelectorAll('.dossier-block').length < dossiers.length) {
+        addDossier();
+    }
+
+    if (draft.date) {
+        const dateInput = document.getElementById('saisir-date');
+        if (dateInput) dateInput.value = draft.date;
+    }
+
+    const blocks = [...container.querySelectorAll('.dossier-block')];
+    dossiers.forEach((d, i) => {
+        const block = blocks[i];
+        if (!block) return;
+
+        const fill = (selector, value) => {
+            const el = block.querySelector(selector);
+            if (el) el.value = value || '';
+        };
+        fill('.dossier-intitule', d.intitule);
+        fill('.dossier-actions', d.actions);
+        fill('.dossier-echeance', d.echeance);
+        fill('.dossier-etat', d.etat);
+
+        if (Array.isArray(d.porteurs) && d.porteurs.length) {
+            const porteursContainer = block.querySelector('.dossier-porteurs');
+            porteursContainer?.querySelectorAll('.multi-select-option').forEach(opt => {
+                if (d.porteurs.includes(opt.dataset.value)) opt.classList.add('selected');
+            });
+            reorderMultiSelectOptions(porteursContainer);
+        }
+    });
+
+    // Re-persister l'état restauré (les addDossier() ci-dessus ont écrit des
+    // brouillons intermédiaires avec des blocs encore vides).
+    saveSaisirDraft();
 }
 
 // ========================================
@@ -768,6 +878,14 @@ function attachEventListeners() {
         btnAddDossier.addEventListener('click', addDossier);
     }
 
+    // Brouillon local de la saisie en cours (anti-perte). Les clics sur les
+    // porteurs sont pris en compte via toggleMultiSelect().
+    const tabSaisir = document.getElementById('tab-saisir');
+    if (tabSaisir) {
+        tabSaisir.addEventListener('input', saveSaisirDraft);
+        tabSaisir.addEventListener('change', saveSaisirDraft);
+    }
+
     // Validation saisie
     const btnValider = document.getElementById('btn-valider-saisie');
     if (btnValider) {
@@ -941,59 +1059,26 @@ function attachEventListeners() {
         });
     }
 
-    // Avertissement si on quitte avec des modifications non enregistrées
-    window.addEventListener('beforeunload', function (event) {
-        if (hasUnsavedChanges()) {
-            event.preventDefault();
-            event.returnValue = '';
+    // Onglet en arrière-plan / iframe déchargée : tenter d'enregistrer ce qui
+    // est en attente (best effort). Pas de `beforeunload` : Grist démarre sa
+    // propre fermeture pendant le dialogue et se retrouve à moitié détruit.
+    const flushPending = () => {
+        if (modifyAutoSaveTimer !== null) {
+            clearTimeout(modifyAutoSaveTimer);
+            modifyAutoSaveTimer = null;
+            void performModifyAutoSave();
         }
-    });
-
-    // Quand l'onglet passe en arrière-plan : forcer les enregistrements en attente
-    document.addEventListener('visibilitychange', function () {
-        if (document.hidden) {
-            flushModifyAutoSave();
-            flushReunionAutoSave();
+        if (reunionAutoSaveTimer !== null) {
+            clearTimeout(reunionAutoSaveTimer);
+            reunionAutoSaveTimer = null;
+            void performReunionAutoSave();
         }
+        saveSaisirDraft();
+    };
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) flushPending();
     });
-}
-
-/**
- * Édition en cours (curseur dans une cellule) dont le contenu diffère de
- * l'enregistrement source, mais dont l'enregistrement automatique n'a pas
- * encore été programmé (frappe sans avoir quitté la cellule).
- */
-function currentEditIsDirty() {
-    const active = document.activeElement;
-    if (!active) return false;
-
-    const zones = ['#modify-results', ...REUNION_TABLE_IDS.map(id => `#${id}`)].join(', ');
-    if (!active.closest(zones)) return false;
-
-    const row = active.closest('tr[data-dossier-id]');
-    if (!row) return false;
-
-    const dossier = tablesData.ODJ.find(d => d.id === Number.parseInt(row.dataset.dossierId, 10));
-    if (!dossier) return false;
-
-    const edited = readEditableRow(row, dossier);
-    return modifyRowHasChanges(dossier, {
-        nouveauDossier: edited.nomCellule,
-        porteurs: edited.porteurs,
-        actions: edited.actions,
-        echeance: edited.echeance,
-        dateReunion: edited.dateReunion,
-        changementEtat: edited.changementEtat
-    });
-}
-
-/** true s'il existe des modifications non encore écrites dans Grist. */
-function hasUnsavedChanges() {
-    if (!saisirFormIsPristine()) return true;
-    if (modifyAutoSaveTimer !== null || modifyAutoSaveInFlight) return true;
-    if (reunionAutoSaveTimer !== null || reunionAutoSaveInFlight) return true;
-    if (currentEditIsDirty()) return true;
-    return false;
+    window.addEventListener('pagehide', flushPending);
 }
 
 async function switchTab(event) {
@@ -1128,6 +1213,7 @@ function toggleMultiSelect(event) {
     event.target.classList.toggle('selected');
     // Réorganiser les options pour mettre les sélectionnées en haut
     reorderMultiSelectOptions(event.target.parentElement);
+    saveSaisirDraft();
 }
 
 function reorderMultiSelectOptions(container) {
@@ -1221,6 +1307,8 @@ function addDossier() {
 
     if (intituleInput) attachAutocompleteToInput(intituleInput);
     if (actionsInput) attachAutocompleteToInput(actionsInput);
+
+    saveSaisirDraft();
 }
 
 function removeDossier(button) {
@@ -1230,6 +1318,7 @@ function removeDossier(button) {
     if (container.children.length > 1) {
         dossier.remove();
         renumberDossiers();
+        saveSaisirDraft();
     }
 }
 
@@ -1578,6 +1667,7 @@ async function validateSaisie() {
         }
 
         alert('Données enregistrées avec succès !');
+        clearSaisirDraft();
 
         await loadAllTables();
         await removeDuplicateRecords();
