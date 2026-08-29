@@ -604,6 +604,7 @@ th[data-col="echeance"], td[data-col="echeance"],
 th[data-col="date-reunion"], td[data-col="date-reunion"],
 th[data-col="date-enr"], td[data-col="date-enr"] {
     width: 6em;
+    white-space: nowrap;
 }
 
 /* Tableaux éditables : les colonnes de dates modifiables contiennent un
