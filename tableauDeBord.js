@@ -1605,6 +1605,9 @@ function consultByDate() {
 
     let dossiers = tablesData.ODJ.filter(o => o.Date_de_la_reunion == dateValue);
 
+    // Ne garder que le dernier état de chaque dossier (le plus récent)
+    dossiers = getLatestEntriesPerDossier(dossiers);
+
     // Trier par état (du pire au meilleur)
     dossiers = sortByEtat(dossiers);
 
@@ -1663,6 +1666,7 @@ function consultByDate() {
 
         const tr = document.createElement('tr');
         if (etatClass) tr.className = etatClass;
+        makeDossierRowClickable(tr, dossier.Dossier);
 
         const tdDossier = document.createElement('td');
         tdDossier.textContent = dossier.Dossier || '';
@@ -1812,6 +1816,32 @@ function navigateToConsultDossier(dossierName) {
 
     // Lancer la consultation
     consultByDossier(dossierName);
+}
+
+/**
+ * Rend une ligne de tableau cliquable : un clic (souris ou clavier) ouvre
+ * l'historique complet du dossier (consultation « par dossier »). Utilisé par
+ * les consultations par porteur, par date de réunion et par date d'échéance.
+ */
+function makeDossierRowClickable(tr, dossierName) {
+    const label = `Voir l'historique complet du dossier ${dossierName || ''}`.trim();
+
+    tr.classList.add('tr-dossier-link');
+    tr.title = 'Voir l\'historique complet de ce dossier';
+
+    // Accessibilité clavier : la ligne devient un contrôle focusable activable
+    // par Entrée ou Espace, comme un bouton.
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('aria-label', label);
+
+    tr.addEventListener('click', () => navigateToConsultDossier(dossierName));
+    tr.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            navigateToConsultDossier(dossierName);
+        }
+    });
 }
 
 function handlePorteurSelectChange() {
@@ -1965,9 +1995,8 @@ function consultByPorteur() {
             : '';
 
         const tr = document.createElement('tr');
-        tr.className = (etatClass ? etatClass + ' ' : '') + 'tr-dossier-link';
-        tr.title = 'Voir l\'historique complet de ce dossier';
-        tr.addEventListener('click', () => navigateToConsultDossier(dossier.Dossier));
+        if (etatClass) tr.className = etatClass;
+        makeDossierRowClickable(tr, dossier.Dossier);
 
         const tdDate = document.createElement('td');
         tdDate.textContent = formatDateShort(dossier.Date_de_la_reunion);
@@ -2142,6 +2171,7 @@ function consultByEcheance() {
 
         const tr = document.createElement('tr');
         if (etatClass) tr.className = etatClass;
+        makeDossierRowClickable(tr, dossier.Dossier);
 
         const tdDossier = document.createElement('td');
         tdDossier.textContent = dossier.Dossier || '';

@@ -578,7 +578,7 @@ th {
    passer à la ligne (overflow-wrap). */
 th,
 td {
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     width: 8em;
 }
 
@@ -703,13 +703,16 @@ tr:hover {
     cursor: pointer;
 }
 
-.tr-dossier-link:hover td {
+.tr-dossier-link:hover td,
+.tr-dossier-link:focus-visible td {
     background-color: #e6f4ef;
     color: darkblue;
 }
 
-.tr-dossier-link:hover {
+.tr-dossier-link:hover,
+.tr-dossier-link:focus-visible {
     outline: 2px solid darkblue;
+    outline-offset: -2px;
 }
 
 /* Filtres */

@@ -133,26 +133,26 @@
                 <label class="consult-selector-label">Consulter par :</label>
                 <div class="radio-group">
                     <label class="radio-label">
-                        <input type="radio" name="consult-type" value="date" checked>
-                        <span>Date de réunion</span>
-                    </label>
-                    <label class="radio-label">
-                        <input type="radio" name="consult-type" value="echeance">
-                        <span>Date d'échéance</span>
-                    </label>
-                    <label class="radio-label">
-                        <input type="radio" name="consult-type" value="dossier">
+                        <input type="radio" name="consult-type" value="dossier" checked>
                         <span>Dossier</span>
                     </label>
                     <label class="radio-label">
                         <input type="radio" name="consult-type" value="porteur">
                         <span>Porteur</span>
                     </label>
+                    <label class="radio-label">
+                        <input type="radio" name="consult-type" value="date">
+                        <span>Date de réunion</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="consult-type" value="echeance">
+                        <span>Date d'échéance</span>
+                    </label>
                 </div>
             </div>
 
             <!-- Consultation par date -->
-            <div id="consult-date-selector" class="form-group">
+            <div id="consult-date-selector" class="form-group hidden">
                 <label class="form-label">Sélectionner une date de réunion :</label>
                 <select class="form-select form-select-small" id="consult-date-select">
                     <option value="">-- Choisir une date --</option>
@@ -161,7 +161,7 @@
             </div>
 
             <!-- Consultation par dossier -->
-            <div id="consult-dossier-selector" class="form-group hidden">
+            <div id="consult-dossier-selector" class="form-group">
                 <label class="form-label">Sélectionner un dossier :</label>
                 <div class="autocomplete-container input-with-clear">
                     <input type="text" class="form-input" id="consult-dossier-input"
@@ -214,26 +214,26 @@
                 <label class="consult-selector-label">Modifier par :</label>
                 <div class="radio-group">
                     <label class="radio-label">
-                        <input type="radio" name="modify-type" value="date" checked>
-                        <span>Date de réunion</span>
-                    </label>
-                    <label class="radio-label">
-                        <input type="radio" name="modify-type" value="echeance">
-                        <span>Date d'échéance</span>
-                    </label>
-                    <label class="radio-label">
-                        <input type="radio" name="modify-type" value="dossier">
+                        <input type="radio" name="modify-type" value="dossier" checked>
                         <span>Dossier</span>
                     </label>
                     <label class="radio-label">
                         <input type="radio" name="modify-type" value="porteur">
                         <span>Porteur</span>
                     </label>
+                    <label class="radio-label">
+                        <input type="radio" name="modify-type" value="date">
+                        <span>Date de réunion</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="modify-type" value="echeance">
+                        <span>Date d'échéance</span>
+                    </label>
                 </div>
             </div>
 
             <!-- Sélecteurs -->
-            <div id="modify-date-selector" class="form-group">
+            <div id="modify-date-selector" class="form-group hidden">
                 <label class="form-label">Sélectionner une date de réunion :</label>
                 <select class="form-select form-select-small" id="modify-date-select">
                     <option value="">-- Choisir une date --</option>
@@ -241,7 +241,7 @@
                 </select>
             </div>
 
-            <div id="modify-dossier-selector" class="form-group hidden">
+            <div id="modify-dossier-selector" class="form-group">
                 <label class="form-label">Sélectionner un dossier :</label>
                 <div class="autocomplete-container input-with-clear">
                     <input type="text" class="form-input" id="modify-dossier-input"
