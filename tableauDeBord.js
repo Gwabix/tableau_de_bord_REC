@@ -940,6 +940,60 @@ function attachEventListeners() {
             }
         });
     }
+
+    // Avertissement si on quitte avec des modifications non enregistrées
+    window.addEventListener('beforeunload', function (event) {
+        if (hasUnsavedChanges()) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+    });
+
+    // Quand l'onglet passe en arrière-plan : forcer les enregistrements en attente
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            flushModifyAutoSave();
+            flushReunionAutoSave();
+        }
+    });
+}
+
+/**
+ * Édition en cours (curseur dans une cellule) dont le contenu diffère de
+ * l'enregistrement source, mais dont l'enregistrement automatique n'a pas
+ * encore été programmé (frappe sans avoir quitté la cellule).
+ */
+function currentEditIsDirty() {
+    const active = document.activeElement;
+    if (!active) return false;
+
+    const zones = ['#modify-results', ...REUNION_TABLE_IDS.map(id => `#${id}`)].join(', ');
+    if (!active.closest(zones)) return false;
+
+    const row = active.closest('tr[data-dossier-id]');
+    if (!row) return false;
+
+    const dossier = tablesData.ODJ.find(d => d.id === Number.parseInt(row.dataset.dossierId, 10));
+    if (!dossier) return false;
+
+    const edited = readEditableRow(row, dossier);
+    return modifyRowHasChanges(dossier, {
+        nouveauDossier: edited.nomCellule,
+        porteurs: edited.porteurs,
+        actions: edited.actions,
+        echeance: edited.echeance,
+        dateReunion: edited.dateReunion,
+        changementEtat: edited.changementEtat
+    });
+}
+
+/** true s'il existe des modifications non encore écrites dans Grist. */
+function hasUnsavedChanges() {
+    if (!saisirFormIsPristine()) return true;
+    if (modifyAutoSaveTimer !== null || modifyAutoSaveInFlight) return true;
+    if (reunionAutoSaveTimer !== null || reunionAutoSaveInFlight) return true;
+    if (currentEditIsDirty()) return true;
+    return false;
 }
 
 async function switchTab(event) {
