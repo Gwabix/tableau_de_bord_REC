@@ -197,7 +197,6 @@ async function loadAllTables() {
 
         tablesData.Menus = menusTable.id.map((id, index) => ({
             id: id,
-            Pres_Dist_: menusTable.Pres_Dist_[index] || '',
             Personnes: menusTable.Personnes[index] || '',
             Etat: menusTable.Etat[index] || ''
         }));
