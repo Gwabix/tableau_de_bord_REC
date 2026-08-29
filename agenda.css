@@ -67,13 +67,30 @@ body {
     max-width: 591px;
 }
 
+/* Grille 3 colonnes : les deux colonnes latérales sont strictement égales
+   (minmax(0, 1fr)), donc le sélecteur de mois du centre est toujours aligné
+   sur l'axe de la page — et donc sur le sélecteur d'année en dessous. */
 .month-nav {
-    display: flex;
-    width: 100%;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    flex-wrap: wrap;
+    width: 100%;
     gap: 8px;
+}
+
+.nav-side {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.nav-side--prev {
+    justify-content: flex-end;
+}
+
+.nav-side--next {
+    justify-content: flex-start;
 }
 
 .nav-label {
@@ -90,6 +107,7 @@ body {
     border-radius: 6px;
     width: 36px;
     height: 36px;
+    flex-shrink: 0;
     padding: 0;
     display: inline-flex;
     align-items: center;
@@ -131,7 +149,6 @@ select:hover {
     margin: 0 auto;
     padding: 20px;
     box-shadow: var(--shadow);
-    max-height: 500px;
     width: 100%;
     max-width: 551px;
 }
@@ -215,14 +232,6 @@ select:hover {
         max-width: 551px;
     }
 
-    .select-group {
-        flex: 0 1 auto;
-    }
-
-    .month-nav {
-        row-gap: 6px;
-    }
-
     .calendar {
         padding: 14px;
     }
@@ -255,7 +264,9 @@ select:hover {
         font-size: 1rem;
     }
 
+    /* Trop étroit pour les noms de mois de part et d'autre : on ne garde que
+       les flèches et le sélecteur, qui restent centrés. */
     .nav-label {
-        font-size: 12px;
+        display: none;
     }
 }

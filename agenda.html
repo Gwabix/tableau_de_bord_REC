@@ -11,15 +11,19 @@
 
     <div class="header">
         <div class="month-nav" aria-label="Navigation mensuelle">
-            <span class="nav-label" id="prevMonthLabel">Mois précédent</span>
-            <button class="nav-button" id="prevMonthBtn" type="button" aria-label="Mois précédent"
-                title="Mois précédent">←</button>
+            <div class="nav-side nav-side--prev">
+                <span class="nav-label" id="prevMonthLabel">Mois précédent</span>
+                <button class="nav-button" id="prevMonthBtn" type="button" aria-label="Mois précédent"
+                    title="Mois précédent">←</button>
+            </div>
             <div class="select-group">
                 <select id="monthSelect" aria-label="Mois"></select>
             </div>
-            <button class="nav-button" id="nextMonthBtn" type="button" aria-label="Mois suivant"
-                title="Mois suivant">→</button>
-            <span class="nav-label" id="nextMonthLabel">Mois suivant</span>
+            <div class="nav-side nav-side--next">
+                <button class="nav-button" id="nextMonthBtn" type="button" aria-label="Mois suivant"
+                    title="Mois suivant">→</button>
+                <span class="nav-label" id="nextMonthLabel">Mois suivant</span>
+            </div>
         </div>
         <div class="select-group">
             <select id="yearSelect" aria-label="Année"></select>
