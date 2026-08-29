@@ -135,6 +135,7 @@ select {
     background: var(--surface);
     color: var(--text);
     font-size: 14px;
+    text-align: center;
     cursor: pointer;
     outline: none;
 }
@@ -215,6 +216,7 @@ select:hover {
     background: var(--other-selected-bg);
     color: var(--other-selected-text);
     font-weight: 600;
+    font-size: 1rem;
     border: 1px dotted var(--other-selected-border);
     margin: .5rem;
 }
@@ -263,6 +265,12 @@ select:hover {
 
     .day-cell {
         font-size: 1rem;
+    }
+
+    /* Cellules déjà petites + gap réduit : une marge de .5rem écraserait
+       le disque. */
+    .day-cell.other-month.selected {
+        margin: .25rem;
     }
 
     /* Trop étroit pour les noms de mois de part et d'autre : on ne garde que
