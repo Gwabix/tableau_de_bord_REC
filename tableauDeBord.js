@@ -545,6 +545,28 @@ function getUniqueDates(data, column) {
     return [...new Set(dates)].sort((a, b) => b - a);
 }
 
+/**
+ * Noms de dossiers uniques, classés par activité la plus récente d'abord
+ * (valeur maximale de la colonne Enregistrement parmi les lignes du dossier).
+ * Sert à ordonner les suggestions du champ « Rechercher un dossier ».
+ */
+function getDossiersByRecentActivity() {
+    const lastActivity = new Map();
+
+    tablesData.ODJ.forEach(odj => {
+        if (!odj.Dossier) return;
+        const ts = odj.Enregistrement || 0;
+        const prev = lastActivity.get(odj.Dossier);
+        if (prev === undefined || ts > prev) {
+            lastActivity.set(odj.Dossier, ts);
+        }
+    });
+
+    return [...lastActivity.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([nom]) => nom);
+}
+
 function getUniquePorteurs() {
     const porteurs = new Set();
     tablesData.ODJ.forEach(row => {
@@ -1372,8 +1394,7 @@ function attachDossierAutocomplete(input, mode) {
         const value = this.value;
 
         if (value.length === 0) {
-            const allDossiers = [...new Set(tablesData.ODJ.map(odj => odj.Dossier).filter(Boolean))].sort();
-            currentSuggestions = allDossiers.slice(0, 10);
+            currentSuggestions = getDossiersByRecentActivity().slice(0, 10);
             displaySuggestions(suggestionsDiv, currentSuggestions);
             highlightedIndex = 0;
             highlightSuggestion(suggestionsDiv, highlightedIndex);
@@ -1394,8 +1415,7 @@ function attachDossierAutocomplete(input, mode) {
         toggleClearButton(clearButtonId, value);
 
         if (value.length === 0) {
-            const allDossiers = [...new Set(tablesData.ODJ.map(odj => odj.Dossier).filter(Boolean))].sort();
-            currentSuggestions = allDossiers.slice(0, 10);
+            currentSuggestions = getDossiersByRecentActivity().slice(0, 10);
             displaySuggestions(suggestionsDiv, currentSuggestions);
             highlightedIndex = 0;
             highlightSuggestion(suggestionsDiv, highlightedIndex);
