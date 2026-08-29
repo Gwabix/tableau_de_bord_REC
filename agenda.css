@@ -216,6 +216,7 @@ select:hover {
     color: var(--other-selected-text);
     font-weight: 600;
     border: 1px dotted var(--other-selected-border);
+    margin: .5rem;
 }
 
 .day-cell.other-month.selected:hover {
