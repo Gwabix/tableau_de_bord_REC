@@ -114,12 +114,12 @@ function renderCalendar() {
 
     for (let i = prevMonthDays; i > 0; i--) {
         const day = prevLastDay.getDate() - i + 1;
-        const cell = createDayCell(day, true);
+        const cell = createDayCell(day, -1);
         calendarGrid.appendChild(cell);
     }
 
     for (let day = 1; day <= lastDay.getDate(); day++) {
-        const cell = createDayCell(day, false);
+        const cell = createDayCell(day, 0);
         calendarGrid.appendChild(cell);
     }
 
@@ -127,23 +127,26 @@ function renderCalendar() {
     const remainingCells = (Math.ceil(totalCells / 7) * 7) - totalCells;
 
     for (let day = 1; day <= remainingCells; day++) {
-        const cell = createDayCell(day, true);
+        const cell = createDayCell(day, 1);
         calendarGrid.appendChild(cell);
     }
 }
 
-function createDayCell(day, otherMonth) {
+// monthOffset : -1 (mois précédent), 0 (mois affiché), 1 (mois suivant).
+// Les jours hors du mois affiché restent cliquables ; ils reçoivent la classe
+// « other-month » pour leur mise en forme dédiée.
+function createDayCell(day, monthOffset) {
     const cell = document.createElement('div');
     cell.className = 'day-cell';
     cell.textContent = day;
 
-    if (otherMonth) {
-        cell.classList.add('other-month', 'empty');
-        return cell;
-    }
-
-    const date = new Date(currentYear, currentMonth, day);
+    // new Date() normalise les débordements de mois (mois -1 ou 12).
+    const date = new Date(currentYear, currentMonth + monthOffset, day);
     const dateStr = dateToString(date);
+
+    if (monthOffset !== 0) {
+        cell.classList.add('other-month');
+    }
 
     const today = new Date();
     if (date.toDateString() === today.toDateString()) {
@@ -154,14 +157,12 @@ function createDayCell(day, otherMonth) {
         cell.classList.add('selected');
     }
 
-    cell.addEventListener('click', () => handleDateClick(dateStr, cell));
+    cell.addEventListener('click', () => handleDateClick(dateStr));
 
     return cell;
 }
 
-async function handleDateClick(dateStr, cell) {
-    if (cell.classList.contains('empty')) return;
-
+async function handleDateClick(dateStr) {
     const isSelected = agendaDates.has(dateStr);
 
     if (isSelected) {

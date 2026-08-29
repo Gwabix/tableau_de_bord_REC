@@ -19,6 +19,10 @@
     --selected-hover: #66c3c3;
     --selected-text: #ffffff;
     --other-month: #9ca3af;
+    --other-selected-bg: #c0f7f23d;
+    --other-selected-bg-hover: #c0f7f259;
+    --other-selected-text: #202327;
+    --other-selected-border: #1b7f78;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -38,6 +42,10 @@
         --selected-hover: #115e59;
         --selected-text: #f9fafb;
         --other-month: #6b7280;
+        --other-selected-bg: #c0f7f23d;
+        --other-selected-bg-hover: #c0f7f259;
+        --other-selected-text: #f0fdfc;
+        --other-selected-border: #4db8b8;
         --shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
     }
 }
@@ -165,14 +173,6 @@ select:hover {
     background: var(--day-hover);
 }
 
-.day-cell.empty {
-    cursor: default;
-}
-
-.day-cell.empty:hover {
-    background: transparent;
-}
-
 .day-cell.today {
     border: 3px solid var(--today-border);
     font-weight: bold;
@@ -190,6 +190,19 @@ select:hover {
 
 .day-cell.other-month {
     color: var(--other-month);
+}
+
+/* Jour d'un mois adjacent, présent dans l'agenda : mise en forme dédiée
+   (plus discrète qu'un jour sélectionné du mois affiché). */
+.day-cell.other-month.selected {
+    background: var(--other-selected-bg);
+    color: var(--other-selected-text);
+    font-weight: 600;
+    border: 1px dotted var(--other-selected-border);
+}
+
+.day-cell.other-month.selected:hover {
+    background: var(--other-selected-bg-hover);
 }
 
 @media (max-width: 550px) {
