@@ -603,7 +603,12 @@ th[data-col="etat"], td[data-col="etat"] {
 th[data-col="echeance"], td[data-col="echeance"],
 th[data-col="date-reunion"], td[data-col="date-reunion"],
 th[data-col="date-enr"], td[data-col="date-enr"] {
-    width: 6em;
+    width: 7em;
+}
+
+td[data-col="echeance"],
+td[data-col="date-reunion"],
+td[data-col="date-enr"] {
     white-space: nowrap;
 }
 
