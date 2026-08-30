@@ -903,6 +903,58 @@ async function removeDuplicateRecords() {
     }
 }
 
+/** Égalité de deux enregistrements ODJ, hors `id` et `Enregistrement`. */
+function odjRecordsEqual(a, b) {
+    const porteurs = value => (Array.isArray(value) ? value.filter(v => v !== 'L') : []).slice().sort();
+    const pa = porteurs(a.Porteur_s_);
+    const pb = porteurs(b.Porteur_s_);
+
+    return (a.Date_de_la_reunion ?? null) === (b.Date_de_la_reunion ?? null)
+        && (a.Dossier || '') === (b.Dossier || '')
+        && (a.ID_Dossier || '') === (b.ID_Dossier || '')
+        && (a.Echeance ?? null) === (b.Echeance ?? null)
+        && (a.Etat || '') === (b.Etat || '')
+        && (a.Actions_a_mettre_en_uvre_etapes || '').trim() === (b.Actions_a_mettre_en_uvre_etapes || '').trim()
+        && pa.length === pb.length && pa.every((v, i) => v === pb[i]);
+}
+
+/**
+ * Annule un enregistrement qui ne change rien : si la dernière ligne d'un
+ * dossier est strictement identique à la précédente (hors `Enregistrement`), on
+ * la supprime et on garde la plus ancienne — l'historique ne montre alors aucun
+ * changement fictif (ex. état modifié puis rétabli le même jour).
+ *
+ * On ne compare que le sommet de la pile de chaque dossier : un vrai retour à
+ * un état antérieur, séparé par d'autres états, reste intact.
+ * @returns {Promise<boolean>} true si au moins une ligne a été supprimée
+ */
+async function removeNoOpLatestRecords() {
+    const groups = new Map();
+    tablesData.ODJ.forEach(record => {
+        const key = record.ID_Dossier || record.Dossier || '';
+        if (!key) return;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(record);
+    });
+
+    const idsToDelete = [];
+    groups.forEach(records => {
+        if (records.length < 2) return;
+        const sorted = [...records].sort((a, b) => (b.Enregistrement || 0) - (a.Enregistrement || 0));
+        let i = 0;
+        while (i + 1 < sorted.length && odjRecordsEqual(sorted[i], sorted[i + 1])) {
+            idsToDelete.push(sorted[i].id);
+            i++;
+        }
+    });
+
+    if (idsToDelete.length === 0) return false;
+
+    await grist.docApi.applyUserActions(idsToDelete.map(id => ['RemoveRecord', 'ODJ', id]));
+    console.log(`${idsToDelete.length} enregistrement(s) sans changement supprimé(s)`);
+    return true;
+}
+
 // ========================================
 // GESTION DES ÉVÉNEMENTS
 // ========================================
@@ -3725,10 +3777,14 @@ async function performModifyAutoSave() {
             return;
         }
 
-        // Pas de removeDuplicateRecords ici : l'upsert par jour (findTodayRecord)
-        // empêche déjà les doublons, et une déduplication globale supprimerait
-        // à tort une ligne d'historique identique à un état antérieur du dossier.
+        // Pas de removeDuplicateRecords global ici (il supprimerait à tort un
+        // retour à un état antérieur du dossier). removeNoOpLatestRecords se
+        // limite au sommet de la pile : on annule un enregistrement identique
+        // au précédent (modification puis rétablissement).
         await loadAllTables();
+        if (await removeNoOpLatestRecords()) {
+            await loadAllTables();
+        }
         populateConsultSelectors();
         reopenModifyForm();
         showModifySaveStatus('saved');
@@ -3975,10 +4031,13 @@ async function saveReunionModifications() {
             await grist.docApi.applyUserActions(actionsToApply);
         }
 
-        // Pas de removeDuplicateRecords : l'upsert par jour évite déjà les
-        // doublons et une déduplication globale effacerait des lignes
-        // d'historique légitimes (retour à un état antérieur).
+        // Déduplication limitée au sommet de la pile : on annule un
+        // enregistrement identique au précédent (modification puis
+        // rétablissement), sans toucher aux vrais retours à un état antérieur.
         await loadAllTables();
+        if (await removeNoOpLatestRecords()) {
+            await loadAllTables();
+        }
         populateConsultSelectors();
 
         // Rafraîchir l'affichage (conserve la date consultée ; les dossiers
