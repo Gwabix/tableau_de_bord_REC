@@ -513,36 +513,8 @@ body {
     line-height: 1.6;
 }
 
-/* États avec couleurs */
-.etat-cloture {
-    background-color: #4A90E2 !important;
-    color: white;
-}
-
-.etat-avance-tres-bien {
-    background-color: #479415 !important;
-    color: white;
-}
-
-.etat-avance-bien {
-    background-color: #82b34f !important;
-    color: white;
-}
-
-.etat-ras {
-    background-color: #FDD835 !important;
-    color: #262633;
-}
-
-.etat-tensions {
-    background-color: #FF8A80 !important;
-    color: #262633;
-}
-
-.etat-blocage {
-    background-color: #D32F2F !important;
-    color: white;
-}
+/* Les couleurs d'état sont appliquées en style inline sur la ligne (<tr>),
+   à partir de la configuration de la colonne Etat (voir applyEtatStyle). */
 
 /* Tableau pour affichage dossiers */
 .table-container {

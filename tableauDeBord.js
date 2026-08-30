@@ -1,6 +1,5 @@
 ﻿// Configuration Grist - Version simplifiée
 let tablesData = {
-    Menus: [],
     ODJ: [],
     Agenda: []
 };
@@ -123,24 +122,182 @@ async function ensureAgendaDateExists(dateTimestamp) {
 }
 
 let currentDossierCount = 1;
-let etatColorMap = {
-    "Clôturé": "etat-cloture",
-    "Avance très bien": "etat-avance-tres-bien",
-    "Avance bien": "etat-avance-bien",
-    "RAS": "etat-ras",
-    "Des tensions": "etat-tensions",
-    "Forte difficulté, blocage": "etat-blocage"
+
+// ========================================
+// CHOIX DE COLONNES (Porteur_s_ / Etat)
+// ========================================
+// Depuis l'abandon de la table « Menus », les porteurs et les états sont des
+// colonnes Choice/ChoiceList : chaque ligne d'ODJ stocke le texte, pas une
+// référence. La liste des choix, leur ordre et leurs couleurs sont lus dans la
+// configuration des colonnes (widgetOptions) ; ces constantes ne servent que de
+// repli si cette config est illisible.
+
+const DEFAULT_ETAT_ORDER = [
+    "Clôturé",
+    "Avance très bien",
+    "Avance bien",
+    "RAS",
+    "Des tensions",
+    "Forte difficulté, blocage",
+    "Supprimer le dossier"
+];
+
+const DEFAULT_ETAT_COLORS = {
+    "Clôturé": "#4A90E2",
+    "Avance très bien": "#479415",
+    "Avance bien": "#82b34f",
+    "RAS": "#FDD835",
+    "Des tensions": "#FF8A80",
+    "Forte difficulté, blocage": "#D32F2F"
 };
 
-// Ordre de tri des états (du pire au meilleur)
-let etatSortOrder = [
-    "Forte difficulté, blocage",
-    "Des tensions",
-    "RAS",
-    "Avance bien",
-    "Avance très bien",
-    "Clôturé"
-];
+const DEFAULT_ETAT_ROLES = { cloture: "Clôturé", supprimer: "Supprimer le dossier" };
+
+// État module, (re)peuplé par loadColumnChoices() à chaque chargement des tables.
+let columnChoices = {
+    etats: [...DEFAULT_ETAT_ORDER],
+    porteurs: [],
+    etatColors: { ...DEFAULT_ETAT_COLORS }
+};
+let etatRoles = { ...DEFAULT_ETAT_ROLES };
+
+/** Liste des états dans l'ordre d'affichage (sélecteurs). */
+function getEtatDropdownOrder() {
+    return columnChoices.etats.slice();
+}
+
+/** Liste des porteurs proposés à la saisie (choix configurés). */
+function getPorteurChoices() {
+    return columnChoices.porteurs.slice();
+}
+
+/**
+ * Ordre de tri des dossiers par état, du pire au meilleur : ordre d'affichage
+ * inversé, sans l'état « à supprimer ».
+ */
+function getEtatSortOrder() {
+    return columnChoices.etats.filter(e => e !== etatRoles.supprimer).reverse();
+}
+
+/** Noms des porteurs d'un dossier (retire le sentinelle 'L' de la ChoiceList). */
+function getDossierPorteurs(dossier) {
+    return Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_.filter(v => v !== 'L') : [];
+}
+
+/** Couleur de texte lisible (noir/blanc) sur un fond hexadécimal donné. */
+function contrastText(hex) {
+    const match = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!match) return '#262633';
+    const n = Number.parseInt(match[1], 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.6 ? '#262633' : '#ffffff';
+}
+
+/** Fragment `style="…"` de coloration d'un état (chaîne vide si pas de couleur). */
+function etatStyleAttr(etatName) {
+    const bg = columnChoices.etatColors[etatName];
+    if (!bg || !/^#[0-9a-f]{6}$/i.test(bg)) return '';
+    return ` style="background-color:${bg};color:${contrastText(bg)}"`;
+}
+
+/** Applique (ou retire) la couleur d'un état sur un élément (ligne de tableau). */
+function applyEtatStyle(el, etatName) {
+    const bg = columnChoices.etatColors[etatName];
+    if (bg && /^#[0-9a-f]{6}$/i.test(bg)) {
+        el.style.backgroundColor = bg;
+        el.style.color = contrastText(bg);
+    } else {
+        clearEtatStyle(el);
+    }
+}
+
+function clearEtatStyle(el) {
+    el.style.backgroundColor = '';
+    el.style.color = '';
+}
+
+function deriveDefaultEtatRoles(etats) {
+    const has = name => etats.includes(name);
+    return {
+        cloture: has(DEFAULT_ETAT_ROLES.cloture) ? DEFAULT_ETAT_ROLES.cloture : (etats[0] || DEFAULT_ETAT_ROLES.cloture),
+        supprimer: has(DEFAULT_ETAT_ROLES.supprimer) ? DEFAULT_ETAT_ROLES.supprimer : (etats[etats.length - 1] || DEFAULT_ETAT_ROLES.supprimer)
+    };
+}
+
+async function readWidgetOption(name) {
+    try {
+        if (typeof grist.getOption === 'function') return await grist.getOption(name);
+        if (grist.widgetApi && typeof grist.widgetApi.getOption === 'function') {
+            return await grist.widgetApi.getOption(name);
+        }
+    } catch (error) {
+        console.warn('Lecture option widget impossible:', name, error);
+    }
+    return undefined;
+}
+
+/**
+ * Lit la liste des choix (noms, ordre, couleurs) des colonnes Etat / Porteur_s_
+ * via les tables de métadonnées Grist, plus les rôles spéciaux des états
+ * (option de widget). Repli sur les valeurs par défaut en cas d'échec.
+ */
+async function loadColumnChoices() {
+    try {
+        const [metaTables, metaColumns] = await Promise.all([
+            grist.docApi.fetchTable('_grist_Tables'),
+            grist.docApi.fetchTable('_grist_Tables_column')
+        ]);
+
+        const odjRowId = metaTables.id[metaTables.tableId.indexOf('ODJ')];
+
+        const optionsForColumn = colId => {
+            for (let i = 0; i < metaColumns.id.length; i++) {
+                if (metaColumns.parentId[i] === odjRowId && metaColumns.colId[i] === colId) {
+                    try {
+                        return JSON.parse(metaColumns.widgetOptions[i] || '{}') || {};
+                    } catch {
+                        return {};
+                    }
+                }
+            }
+            return {};
+        };
+
+        const etatOpts = optionsForColumn('Etat');
+        const porteurOpts = optionsForColumn('Porteur_s_');
+
+        const etats = Array.isArray(etatOpts.choices) && etatOpts.choices.length
+            ? etatOpts.choices.slice()
+            : [...DEFAULT_ETAT_ORDER];
+        const porteurs = Array.isArray(porteurOpts.choices) ? porteurOpts.choices.slice() : [];
+
+        const etatColors = {};
+        etats.forEach(nom => {
+            const choiceOpt = etatOpts.choiceOptions && etatOpts.choiceOptions[nom];
+            const fill = choiceOpt && choiceOpt.fillColor;
+            etatColors[nom] = (fill && /^#[0-9a-f]{6}$/i.test(fill) ? fill : null)
+                || DEFAULT_ETAT_COLORS[nom]
+                || '';
+        });
+
+        columnChoices = { etats, porteurs, etatColors };
+    } catch (error) {
+        console.warn('Configuration des colonnes illisible, valeurs par défaut utilisées.', error);
+        columnChoices = {
+            etats: [...DEFAULT_ETAT_ORDER],
+            porteurs: [],
+            etatColors: { ...DEFAULT_ETAT_COLORS }
+        };
+    }
+
+    const storedRoles = await readWidgetOption('etatRoles');
+    etatRoles = (storedRoles && storedRoles.cloture && storedRoles.supprimer)
+        ? { cloture: storedRoles.cloture, supprimer: storedRoles.supprimer }
+        : deriveDefaultEtatRoles(columnChoices.etats);
+}
 
 // Contexte pour réouverture du formulaire après modification
 let modifyContext = {
@@ -189,17 +346,13 @@ async function loadAllTables() {
     try {
         const docApi = grist.docApi;
 
-        const [menusTable, odjTable, agendaTable] = await Promise.all([
-            docApi.fetchTable('Menus'),
+        const [odjTable, agendaTable] = await Promise.all([
             docApi.fetchTable('ODJ'),
             docApi.fetchTable('Agenda')
         ]);
 
-        tablesData.Menus = menusTable.id.map((id, index) => ({
-            id: id,
-            Personnes: menusTable.Personnes[index] || '',
-            Etat: menusTable.Etat[index] || ''
-        }));
+        // Liste des porteurs / états (noms, ordre, couleurs) + rôles spéciaux.
+        await loadColumnChoices();
 
         tablesData.ODJ = odjTable.id.map((id, index) => ({
             id: id,
@@ -241,7 +394,7 @@ function initializeUI() {
 
 function populatePorteurs() {
     const containers = document.querySelectorAll('.dossier-porteurs');
-    const personnes = getUniqueValues(tablesData.Menus, 'Personnes').filter(p => p !== 'Autre');
+    const personnes = getPorteurChoices();
 
     containers.forEach(container => {
         container.innerHTML = '';
@@ -257,34 +410,11 @@ function populatePorteurs() {
 
 function populateEtats() {
     const selects = document.querySelectorAll('.dossier-etat');
-    const etats = getUniqueValues(tablesData.Menus, 'Etat');
-
-    // Ordre personnalisé pour les états (onglet Saisir uniquement)
-    const ordreEtats = [
-        "Clôturé",
-        "Avance très bien",
-        "Avance bien",
-        "RAS",
-        "Des tensions",
-        "Forte difficulté, blocage"
-    ];
-
-    // Trier les états selon l'ordre personnalisé
-    const etatsTries = etats.sort((a, b) => {
-        const indexA = ordreEtats.indexOf(a);
-        const indexB = ordreEtats.indexOf(b);
-
-        if (indexA !== -1 && indexB !== -1) {
-            return indexA - indexB;
-        }
-        if (indexA !== -1) return -1;
-        if (indexB !== -1) return 1;
-        return a.localeCompare(b);
-    });
+    const etats = getEtatDropdownOrder();
 
     selects.forEach(select => {
         select.innerHTML = '<option value="">-- Sélectionner --</option>';
-        etatsTries.forEach(etat => {
+        etats.forEach(etat => {
             const option = document.createElement('option');
             option.value = etat;
             option.textContent = etat;
@@ -411,13 +541,6 @@ function setDefaultDate() {
 // UTILITAIRES
 // ========================================
 
-function getUniqueValues(data, column) {
-    const values = data
-        .map(row => row[column])
-        .filter(val => val && val.toString().trim() !== '');
-    return [...new Set(values)].sort();
-}
-
 /**
  * (Re)construit un groupe de cases à cocher pour filtrer par état, avec une
  * case « Non renseigné » (value '') pour les dossiers sans état saisi.
@@ -427,7 +550,7 @@ function getUniqueValues(data, column) {
 function buildEtatFilterCheckboxes(container, name) {
     if (!container) return;
 
-    const etats = getUniqueValues(tablesData.Menus, 'Etat').filter(e => e !== 'Supprimer le dossier');
+    const etats = getEtatDropdownOrder().filter(e => e !== etatRoles.supprimer);
     container.innerHTML = '';
 
     const addCheckbox = (value, labelText) => {
@@ -483,9 +606,10 @@ function findTodayRecord(dossier, targetDateReunion) {
 }
 
 function sortByEtat(dossiers) {
+    const etatSortOrder = getEtatSortOrder();
     return dossiers.sort((a, b) => {
-        const etatA = getEtatNameById(a.Etat);
-        const etatB = getEtatNameById(b.Etat);
+        const etatA = a.Etat || '';
+        const etatB = b.Etat || '';
 
         // Vérifier si l'état est vide
         const emptyA = !etatA || etatA.trim() === '';
@@ -567,15 +691,16 @@ function getDossiersByRecentActivity() {
         .map(([nom]) => nom);
 }
 
+/**
+ * Porteurs présents dans l'historique ODJ (pas seulement les choix courants) :
+ * on doit pouvoir consulter/modifier les dossiers d'un porteur retiré de la liste.
+ */
 function getUniquePorteurs() {
     const porteurs = new Set();
     tablesData.ODJ.forEach(row => {
-        if (row.Porteur_s_ && Array.isArray(row.Porteur_s_)) {
-            row.Porteur_s_.forEach(id => {
-                const name = getPersonneNameById(id);
-                if (name) porteurs.add(name);
-            });
-        }
+        getDossierPorteurs(row).forEach(name => {
+            if (name) porteurs.add(name);
+        });
     });
     return [...porteurs].sort();
 }
@@ -622,26 +747,6 @@ function tsToInputDate(ts) {
     if (!ts && ts !== 0) return '';
     const date = new Date(ts * 1000);
     return Number.isNaN(date.getTime()) ? '' : date.toISOString().split('T')[0];
-}
-
-function getPersonneNameById(id) {
-    const personne = tablesData.Menus.find(m => m.id === id);
-    return personne ? personne.Personnes : '';
-}
-
-function getEtatNameById(id) {
-    const etat = tablesData.Menus.find(m => m.id === id);
-    return etat ? etat.Etat : '';
-}
-
-function getPersonneIdByName(name) {
-    const personne = tablesData.Menus.find(m => m.Personnes === name);
-    return personne ? personne.id : null;
-}
-
-function getEtatIdByName(name) {
-    const etat = tablesData.Menus.find(m => m.Etat === name);
-    return etat ? etat.id : null;
 }
 
 // ========================================
@@ -1521,8 +1626,7 @@ async function validateSaisie() {
 
             const porteurs = Array.from(dossier.querySelectorAll('.dossier-porteurs .multi-select-option.selected'))
                 .map(el => el.dataset.value)
-                .map(name => getPersonneIdByName(name))
-                .filter(id => id !== null);
+                .filter(Boolean);
 
             if (intitule) {
                 const odjData = {
@@ -1532,7 +1636,7 @@ async function validateSaisie() {
                     Porteur_s_: ['L', ...porteurs],
                     Actions_a_mettre_en_uvre_etapes: actions,
                     Echeance: echeance || null,
-                    Etat: getEtatIdByName(etat),
+                    Etat: etat || null,
                     Enregistrement: Date.now() / 1000
                 };
 
@@ -1678,14 +1782,11 @@ function consultByDate() {
     const tbody = document.createElement('tbody');
 
     dossiers.forEach(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
-        const etatClass = etatColorMap[etatName] || '';
-        const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-            ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-            : '';
+        const etatName = dossier.Etat || '';
+        const porteurs = getDossierPorteurs(dossier).join(', ');
 
         const tr = document.createElement('tr');
-        if (etatClass) tr.className = etatClass;
+        applyEtatStyle(tr, etatName);
         makeDossierRowClickable(tr, dossier.Dossier);
 
         const tdDossier = document.createElement('td');
@@ -1769,14 +1870,11 @@ function consultByDossier(dossierName) {
     const tbody = document.createElement('tbody');
 
     dossiers.forEach(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
-        const etatClass = etatColorMap[etatName] || '';
-        const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-            ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-            : '';
+        const etatName = dossier.Etat || '';
+        const porteurs = getDossierPorteurs(dossier).join(', ');
 
         const tr = document.createElement('tr');
-        if (etatClass) tr.className = etatClass;
+        applyEtatStyle(tr, etatName);
 
         const tdDate = document.createElement('td');
         tdDate.textContent = formatDateShort(dossier.Date_de_la_reunion);
@@ -1889,16 +1987,14 @@ function consultByPorteur() {
     const porteurName = porteurSelect.value;
     if (!porteurName) return;
 
-    const porteurId = getPersonneIdByName(porteurName);
-
     const selectedEtats = new Set(
         Array.from(document.querySelectorAll('input[name="filter-etat"]:checked'))
             .map(cb => cb.value)
     );
 
     let dossiers = tablesData.ODJ.filter(odj => {
-        if (!odj.Porteur_s_ || !Array.isArray(odj.Porteur_s_)) return false;
-        return odj.Porteur_s_.includes(porteurId);
+        if (!Array.isArray(odj.Porteur_s_)) return false;
+        return getDossierPorteurs(odj).includes(porteurName);
     });
 
     // Garder uniquement le record le plus récent par dossier (avant de filtrer par état)
@@ -1906,7 +2002,7 @@ function consultByPorteur() {
 
     // Filtrer par état sur le vrai état courant du dossier
     dossiers = dossiers.filter(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
+        const etatName = dossier.Etat || '';
         return selectedEtats.has(etatName);
     });
 
@@ -2008,14 +2104,11 @@ function consultByPorteur() {
     const tbody = document.createElement('tbody');
 
     dossiers.forEach(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
-        const etatClass = etatColorMap[etatName] || '';
-        const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-            ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-            : '';
+        const etatName = dossier.Etat || '';
+        const porteurs = getDossierPorteurs(dossier).join(', ');
 
         const tr = document.createElement('tr');
-        if (etatClass) tr.className = etatClass;
+        applyEtatStyle(tr, etatName);
         makeDossierRowClickable(tr, dossier.Dossier);
 
         const tdDate = document.createElement('td');
@@ -2082,18 +2175,11 @@ function getConsultPorteurSortValue(dossier, sortKey) {
         case 'Enregistrement':
             return dossier.Enregistrement || 0;
         case 'Etat': {
-            const etatName = getEtatNameById(dossier.Etat);
-            const sortIndex = etatSortOrder.indexOf(etatName);
+            const sortIndex = getEtatSortOrder().indexOf(dossier.Etat || '');
             return sortIndex === -1 ? Number.MAX_SAFE_INTEGER : sortIndex;
         }
-        case 'Porteur_s_': {
-            if (!Array.isArray(dossier.Porteur_s_)) return '';
-            return dossier.Porteur_s_
-                .map(id => getPersonneNameById(id))
-                .filter(name => name)
-                .join(', ')
-                .toLowerCase();
-        }
+        case 'Porteur_s_':
+            return getDossierPorteurs(dossier).join(', ').toLowerCase();
         case 'Dossier':
             return (dossier.Dossier || '').toLowerCase();
         case 'Actions_a_mettre_en_uvre_etapes':
@@ -2183,14 +2269,11 @@ function consultByEcheance() {
     const tbody = document.createElement('tbody');
 
     dossiers.forEach(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
-        const etatClass = etatColorMap[etatName] || '';
-        const porteurs = dossier.Porteur_s_ && dossier.Porteur_s_.length > 0
-            ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(n => n).join(', ')
-            : '';
+        const etatName = dossier.Etat || '';
+        const porteurs = getDossierPorteurs(dossier).join(', ');
 
         const tr = document.createElement('tr');
-        if (etatClass) tr.className = etatClass;
+        applyEtatStyle(tr, etatName);
         makeDossierRowClickable(tr, dossier.Dossier);
 
         const tdDossier = document.createElement('td');
@@ -2320,9 +2403,7 @@ const DOSSIER_COLUMN_LABELS = {
 };
 
 function getDossierPorteursText(dossier) {
-    return Array.isArray(dossier.Porteur_s_) && dossier.Porteur_s_.length > 0
-        ? dossier.Porteur_s_.map(id => getPersonneNameById(id)).filter(Boolean).join(', ')
-        : '';
+    return getDossierPorteurs(dossier).join(', ');
 }
 
 // En-tête (texte) -> clé de colonne, pour les tableaux de consultation
@@ -2374,7 +2455,7 @@ function buildDossierCell(dossier, col) {
         case 'date-reunion':
             return `<td data-col="date-reunion">${escapeHtml(formatDateShort(dossier.Date_de_la_reunion))}</td>`;
         case 'etat':
-            return `<td data-col="etat">${escapeHtml(getEtatNameById(dossier.Etat))}</td>`;
+            return `<td data-col="etat">${escapeHtml(dossier.Etat || '')}</td>`;
         case 'date-enr':
             return `<td data-col="date-enr">${escapeHtml(formatDateShort(dossier.Enregistrement))}</td>`;
         case 'change':
@@ -2395,8 +2476,7 @@ function buildDossierTable(dossiers, columns) {
         + '</tr></thead>';
 
     const body = '<tbody>' + dossiers.map(dossier => {
-        const etatClass = etatColorMap[getEtatNameById(dossier.Etat)] || '';
-        return `<tr class="${escapeHtmlAttribute(etatClass)}" data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`
+        return `<tr${etatStyleAttr(dossier.Etat || '')} data-dossier-id="${escapeHtmlAttribute(dossier.id)}">`
             + columns.map(col => buildDossierCell(dossier, col)).join('')
             + '</tr>';
     }).join('');
@@ -2410,7 +2490,7 @@ function buildDossierTable(dossiers, columns) {
  * retombent sur les valeurs d'origine du dossier.
  * @param {HTMLTableRowElement} row
  * @param {object} dossier - enregistrement ODJ d'origine
- * @returns {{nomCellule: (string|null), porteurs: number[], actions: string,
+ * @returns {{nomCellule: (string|null), porteurs: string[], actions: string,
  *            echeance: *, changementEtat: string}}
  */
 function readEditableRow(row, dossier) {
@@ -2419,10 +2499,8 @@ function readEditableRow(row, dossier) {
 
     const porteurSelect = row.querySelector('[data-col="porteurs"] select');
     const porteurs = porteurSelect
-        ? Array.from(porteurSelect.selectedOptions)
-            .map(opt => (opt.dataset.porteurId ? Number(opt.dataset.porteurId) : getPersonneIdByName(opt.value)))
-            .filter(id => id !== null && id !== undefined && !Number.isNaN(id))
-        : (Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_.filter(v => v !== 'L') : []);
+        ? Array.from(porteurSelect.selectedOptions).map(opt => opt.value).filter(Boolean)
+        : getDossierPorteurs(dossier);
 
     const actionsCell = row.querySelector('[data-col="actions"]');
     const actions = actionsCell
@@ -2597,10 +2675,9 @@ function handleModifyPorteurSelectChange() {
     if (!porteurName || !dossierSelectorDiv || !dossierSelect || !filtersDiv) return;
 
     // Trouver tous les dossiers du porteur
-    const porteurId = getPersonneIdByName(porteurName);
     const dossiers = tablesData.ODJ.filter(odj => {
-        if (!odj.Porteur_s_ || !Array.isArray(odj.Porteur_s_)) return false;
-        return odj.Porteur_s_.includes(porteurId);
+        if (!Array.isArray(odj.Porteur_s_)) return false;
+        return getDossierPorteurs(odj).includes(porteurName);
     });
 
     // Obtenir les noms de dossiers uniques
@@ -2662,7 +2739,6 @@ function modifyByPorteurAllDossiers() {
     modifyContext.value = porteurName;
     modifyContext.secondValue = null;
 
-    const porteurId = getPersonneIdByName(porteurName);
     const hideExpired = document.getElementById('modify-hide-expired')?.checked || false;
 
     const selectedEtats = new Set(
@@ -2671,8 +2747,8 @@ function modifyByPorteurAllDossiers() {
     );
 
     let dossiers = tablesData.ODJ.filter(odj => {
-        if (!odj.Porteur_s_ || !Array.isArray(odj.Porteur_s_)) return false;
-        return odj.Porteur_s_.includes(porteurId);
+        if (!Array.isArray(odj.Porteur_s_)) return false;
+        return getDossierPorteurs(odj).includes(porteurName);
     });
 
     // Garder uniquement le record le plus récent par dossier (avant de filtrer par état)
@@ -2680,7 +2756,7 @@ function modifyByPorteurAllDossiers() {
 
     // Filtrer par état sur le vrai état courant du dossier
     dossiers = dossiers.filter(dossier => {
-        const etatName = getEtatNameById(dossier.Etat);
+        const etatName = dossier.Etat || '';
         return selectedEtats.has(etatName);
     });
 
@@ -2951,7 +3027,7 @@ function extractCellText(el) {
  * @param {HTMLElement} container
  */
 function makeFieldsEditable(container) {
-    const personnes = getUniqueValues(tablesData.Menus, 'Personnes').filter(p => p !== 'Autre');
+    const porteurChoices = getPorteurChoices();
 
     container.querySelectorAll('table tbody tr').forEach(row => {
         const dossierData = tablesData.ODJ.find(d => d.id == row.dataset.dossierId);
@@ -2988,24 +3064,21 @@ function makeFieldsEditable(container) {
                     insertPlainTextAtCaret(event.clipboardData.getData('text/plain'));
                 });
             } else if (col === 'porteurs' && dossierData) {
-                const currentPorteurs = dossierData.Porteur_s_ || [];
+                const currentPorteurs = getDossierPorteurs(dossierData);
                 const select = document.createElement('select');
                 select.multiple = true;
                 applyStyle(select, EDITABLE_CONTROL_STYLE);
                 select.style.minHeight = '60px';
 
-                personnes.forEach(personne => {
-                    const personneId = getPersonneIdByName(personne);
+                // Choix courants + porteurs déjà sur le dossier même s'ils ont
+                // été retirés de la liste (pour ne pas les perdre à l'édition).
+                const options = [...new Set([...porteurChoices, ...currentPorteurs])];
+
+                options.forEach(personne => {
                     const option = document.createElement('option');
                     option.value = personne;
                     option.textContent = personne;
-                    // L'ID est figé sur l'option : la lecture à la sauvegarde ne
-                    // dépend plus d'une correspondance nom -> ID (tablesData peut
-                    // avoir été rechargé entre-temps).
-                    if (personneId !== null && personneId !== undefined) {
-                        option.dataset.porteurId = String(personneId);
-                    }
-                    if (personneId !== null && currentPorteurs.includes(personneId)) {
+                    if (currentPorteurs.includes(personne)) {
                         option.selected = true;
                     }
                     select.appendChild(option);
@@ -3059,24 +3132,7 @@ function makeFieldsEditable(container) {
  * @param {HTMLElement} container
  */
 function populateEtatChangeSelects(container) {
-    const ordreEtats = [
-        "Clôturé",
-        "Avance très bien",
-        "Avance bien",
-        "RAS",
-        "Des tensions",
-        "Forte difficulté, blocage",
-        "Supprimer le dossier"
-    ];
-
-    const etatsTries = getUniqueValues(tablesData.Menus, 'Etat').sort((a, b) => {
-        const indexA = ordreEtats.indexOf(a);
-        const indexB = ordreEtats.indexOf(b);
-        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-        if (indexA !== -1) return -1;
-        if (indexB !== -1) return 1;
-        return a.localeCompare(b);
-    });
+    const etatsTries = getEtatDropdownOrder();
 
     container.querySelectorAll('.etat-change-select').forEach(select => {
         etatsTries.forEach(etat => {
@@ -3090,18 +3146,14 @@ function populateEtatChangeSelects(container) {
             const row = this.closest('tr');
             if (!row) return;
 
-            // Retirer toutes les classes d'état, puis appliquer la bonne couleur
-            Object.values(etatColorMap).forEach(cls => row.classList.remove(cls));
-
             let etatName = this.value;
             if (!etatName) {
                 // Aucun changement : restaurer l'état d'origine du dossier
                 const dossierData = tablesData.ODJ.find(d => d.id == row.dataset.dossierId);
-                etatName = dossierData ? getEtatNameById(dossierData.Etat) : '';
+                etatName = dossierData ? (dossierData.Etat || '') : '';
             }
 
-            const cls = etatColorMap[etatName];
-            if (cls) row.classList.add(cls);
+            applyEtatStyle(row, etatName);
         });
     });
 }
@@ -3148,9 +3200,8 @@ function modifyRowHasChanges(dossier, v) {
 
     if ((v.dateReunion ?? null) !== (dossier.Date_de_la_reunion ?? null)) return true;
 
-    const orig = (Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_ : [])
-        .filter(x => x !== 'L').map(Number).sort((a, b) => a - b);
-    const next = [...(v.porteurs || [])].map(Number).sort((a, b) => a - b);
+    const orig = getDossierPorteurs(dossier).slice().sort();
+    const next = [...(v.porteurs || [])].sort();
     if (orig.length !== next.length || orig.some((x, i) => x !== next[i])) return true;
 
     return false;
@@ -3171,7 +3222,7 @@ function buildModifyUpsertActions(dossier, v) {
         Porteur_s_: ['L', ...v.nouveauxPorteurs],
         Actions_a_mettre_en_uvre_etapes: v.actions,
         Echeance: v.nouvelleEcheance ?? null,
-        Etat: v.nouvelEtat ? getEtatIdByName(v.nouvelEtat) : dossier.Etat,
+        Etat: v.nouvelEtat || dossier.Etat || null,
         Enregistrement: Date.now() / 1000
     };
 
@@ -3222,7 +3273,7 @@ function collectModifyRows(resolveNom) {
         });
 
         rowsData.push(v);
-        if (edited.changementEtat === 'Supprimer le dossier') {
+        if (edited.changementEtat === etatRoles.supprimer) {
             dossiersASupprimer.push({ dossier, nom: nouveauDossier });
         }
     }
@@ -3237,7 +3288,7 @@ function collectModifyRows(resolveNom) {
 async function processModifyRows(rowsData, deletedIds) {
     const actions = [];
     for (const v of rowsData) {
-        if (v.nouvelEtat === 'Supprimer le dossier') continue;
+        if (v.nouvelEtat === etatRoles.supprimer) continue;
         if (deletedIds.has(v.dossier.id)) continue;
         if (!v.hasChanges) continue;
         actions.push(...buildModifyUpsertActions(v.dossier, v));
@@ -3426,8 +3477,8 @@ function reunionDisplayData() {
     let dossierEcheance = tablesData.ODJ.filter(o => o.Echeance == numDateValue && o.Date_de_la_reunion != numDateValue);
     // Garder uniquement la dernière version de chaque dossier
     dossierEcheance = getLatestEntriesPerDossier(dossierEcheance);
-    // Exclure les dossiers dont le dernier état est "Clôturé"
-    dossierEcheance = dossierEcheance.filter(d => getEtatNameById(d.Etat) !== "Clôturé");
+    // Exclure les dossiers dont le dernier état est « clôturé »
+    dossierEcheance = dossierEcheance.filter(d => (d.Etat || '') !== etatRoles.cloture);
     // Exclure les dossiers déjà présents dans l'ODJ
     dossierEcheance = dossierEcheance.filter(d => !odjDossierNames.has(d.Dossier));
 
@@ -3448,8 +3499,8 @@ function reunionDisplayData() {
     });
     // Garder uniquement la dernière version de chaque dossier (avant de filtrer l'état)
     dossierExpired = getLatestEntriesPerDossier(dossierExpired);
-    // Exclure les dossiers dont le dernier état est "Clôturé"
-    dossierExpired = dossierExpired.filter(d => getEtatNameById(d.Etat) !== "Clôturé");
+    // Exclure les dossiers dont le dernier état est « clôturé »
+    dossierExpired = dossierExpired.filter(d => (d.Etat || '') !== etatRoles.cloture);
     // Exclure les dossiers déjà présents dans l'ODJ
     dossierExpired = dossierExpired.filter(d => !odjDossierNames.has(d.Dossier));
 
@@ -3801,7 +3852,7 @@ async function saveReunionModifications() {
                 const nouvelleDateReunion = edited.dateReunion;
                 const nouvelEtat = edited.changementEtat;
 
-                if (nouvelEtat === 'Supprimer le dossier') {
+                if (nouvelEtat === etatRoles.supprimer) {
                     // Collecté pour suppression groupée après confirmation (tout l'historique)
                     dossiersASupprimer.push({ dossier: dossierData, nom: nouveauDossier || dossierData.Dossier });
                     continue;
@@ -3809,7 +3860,6 @@ async function saveReunionModifications() {
 
                 if (nouvelEtat) {
                     // Ajouter une nouvelle ligne avec le nouvel état à la date de la réunion sélectionnée
-                    const nouvelEtatId = getEtatIdByName(nouvelEtat);
                     const dateChangement = (reunionDateValue && !Number.isNaN(reunionDateValue))
                         ? reunionDateValue
                         : Math.floor(Date.now() / 1000);
@@ -3826,7 +3876,7 @@ async function saveReunionModifications() {
                             Porteur_s_: ['L', ...nouveauxPorteurs],
                             Actions_a_mettre_en_uvre_etapes: actions,
                             Echeance: nouvelleEcheance,
-                            Etat: nouvelEtatId,
+                            Etat: nouvelEtat,
                             Enregistrement: Date.now() / 1000
                         }]);
                     } else {
@@ -3837,7 +3887,7 @@ async function saveReunionModifications() {
                             Porteur_s_: ['L', ...nouveauxPorteurs],
                             Actions_a_mettre_en_uvre_etapes: actions,
                             Echeance: nouvelleEcheance,
-                            Etat: nouvelEtatId,
+                            Etat: nouvelEtat,
                             Enregistrement: Date.now() / 1000
                         }]);
                     }
