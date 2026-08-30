@@ -148,16 +148,25 @@ const DEFAULT_ETAT_COLORS = {
     "Avance bien": "#82b34f",
     "RAS": "#FDD835",
     "Des tensions": "#FF8A80",
-    "Forte difficulté, blocage": "#D32F2F"
+    "Forte difficulté, blocage": "#D32F2F",
+    "Supprimer le dossier": "#9E9E9E"
 };
+
+const FALLBACK_ETAT_COLOR = "#E0E0E0";
 
 const DEFAULT_ETAT_ROLES = { cloture: "Clôturé", supprimer: "Supprimer le dossier" };
 
 // État module, (re)peuplé par loadColumnChoices() à chaque chargement des tables.
+// `source` vaut 'grist' si la config de colonne a pu être lue, 'fallback' sinon
+// (dans ce cas le panneau ⚙️ refuse d'écrire). `etatOptions` / `porteurOptions`
+// conservent le blob widgetOptions brut pour ne réécrire que choices/choiceOptions.
 let columnChoices = {
     etats: [...DEFAULT_ETAT_ORDER],
     porteurs: [],
-    etatColors: { ...DEFAULT_ETAT_COLORS }
+    etatColors: { ...DEFAULT_ETAT_COLORS },
+    etatOptions: {},
+    porteurOptions: {},
+    source: 'fallback'
 };
 let etatRoles = { ...DEFAULT_ETAT_ROLES };
 
@@ -239,6 +248,14 @@ async function readWidgetOption(name) {
     return undefined;
 }
 
+async function writeWidgetOption(name, value) {
+    if (typeof grist.setOption === 'function') return grist.setOption(name, value);
+    if (grist.widgetApi && typeof grist.widgetApi.setOption === 'function') {
+        return grist.widgetApi.setOption(name, value);
+    }
+    throw new Error('setOption non disponible');
+}
+
 /**
  * Lit la liste des choix (noms, ordre, couleurs) des colonnes Etat / Porteur_s_
  * via les tables de métadonnées Grist, plus les rôles spéciaux des états
@@ -283,13 +300,23 @@ async function loadColumnChoices() {
                 || '';
         });
 
-        columnChoices = { etats, porteurs, etatColors };
+        columnChoices = {
+            etats,
+            porteurs,
+            etatColors,
+            etatOptions: etatOpts,
+            porteurOptions: porteurOpts,
+            source: 'grist'
+        };
     } catch (error) {
         console.warn('Configuration des colonnes illisible, valeurs par défaut utilisées.', error);
         columnChoices = {
             etats: [...DEFAULT_ETAT_ORDER],
             porteurs: [],
-            etatColors: { ...DEFAULT_ETAT_COLORS }
+            etatColors: { ...DEFAULT_ETAT_COLORS },
+            etatOptions: {},
+            porteurOptions: {},
+            source: 'fallback'
         };
     }
 
@@ -297,6 +324,13 @@ async function loadColumnChoices() {
     etatRoles = (storedRoles && storedRoles.cloture && storedRoles.supprimer)
         ? { cloture: storedRoles.cloture, supprimer: storedRoles.supprimer }
         : deriveDefaultEtatRoles(columnChoices.etats);
+
+    // Sécurité : si un rôle pointe vers un nom absent de la liste (config
+    // désynchronisée), on retombe sur des valeurs cohérentes.
+    if (!columnChoices.etats.includes(etatRoles.cloture)
+        || !columnChoices.etats.includes(etatRoles.supprimer)) {
+        etatRoles = deriveDefaultEtatRoles(columnChoices.etats);
+    }
 }
 
 // Contexte pour réouverture du formulaire après modification
@@ -694,15 +728,25 @@ function getDossiersByRecentActivity() {
 /**
  * Porteurs présents dans l'historique ODJ (pas seulement les choix courants) :
  * on doit pouvoir consulter/modifier les dossiers d'un porteur retiré de la liste.
+ * Ordre : celui défini dans ⚙️ (getPorteurChoices) ; les porteurs seulement
+ * présents dans l'historique sont ajoutés à la fin, par ordre alphabétique.
  */
 function getUniquePorteurs() {
-    const porteurs = new Set();
+    const present = new Set();
     tablesData.ODJ.forEach(row => {
         getDossierPorteurs(row).forEach(name => {
-            if (name) porteurs.add(name);
+            if (name) present.add(name);
         });
     });
-    return [...porteurs].sort();
+
+    const order = getPorteurChoices();
+    const rank = new Map(order.map((nom, i) => [nom, i]));
+
+    return [...present].sort((a, b) => {
+        const ra = rank.has(a) ? rank.get(a) : Number.MAX_SAFE_INTEGER;
+        const rb = rank.has(b) ? rank.get(b) : Number.MAX_SAFE_INTEGER;
+        return ra !== rb ? ra - rb : a.localeCompare(b, 'fr', { sensitivity: 'base' });
+    });
 }
 
 // Les colonnes Date de Grist stockent un timestamp « minuit UTC » représentant
@@ -1066,6 +1110,9 @@ function attachEventListeners() {
             }
         });
     }
+
+    // Panneau de paramètres (⚙️)
+    initSettingsPanel();
 }
 
 async function switchTab(event) {
@@ -3947,8 +3994,337 @@ async function saveReunionModifications() {
 }
 
 // ========================================
-// SECTIONS REPLIABLES
+// PANNEAU DE PARAMÈTRES (⚙️)
 // ========================================
+// Édite les choix des colonnes Etat / Porteur_s_ (noms, ordre, couleur d'état)
+// directement depuis le widget. Les choix sont écrits dans widgetOptions de la
+// colonne (ModifyColumn) ; les rôles spéciaux des états (« clôturé » exclu des
+// échus, « à supprimer » déclenche la suppression) sont mémorisés dans une
+// option de widget et suivent les renommages. Retirer un choix ne touche aucun
+// dossier : l'historique conserve la valeur (affichée hors-liste par Grist).
+
+let settingsPanelWired = false;
+let settingsLastFocus = null;
+
+function initSettingsPanel() {
+    if (settingsPanelWired) return;
+    settingsPanelWired = true;
+
+    const btn = document.getElementById('btn-settings');
+    if (btn) btn.addEventListener('click', openSettings);
+
+    const closeBtn = document.getElementById('settings-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeSettings);
+
+    const cancelBtn = document.getElementById('settings-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeSettings);
+
+    const backdrop = document.getElementById('settings-modal');
+    if (backdrop) {
+        backdrop.addEventListener('click', event => {
+            if (event.target === backdrop) closeSettings();
+        });
+        backdrop.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                event.stopPropagation();
+                closeSettings();
+            } else if (event.key === 'Tab') {
+                trapModalFocus(event, backdrop);
+            }
+        });
+    }
+
+    const addPorteurBtn = document.getElementById('settings-add-porteur');
+    if (addPorteurBtn) {
+        addPorteurBtn.addEventListener('click', () => addSettingsRow('settings-porteurs-list', { kind: 'porteur' }));
+    }
+
+    const addEtatBtn = document.getElementById('settings-add-etat');
+    if (addEtatBtn) {
+        addEtatBtn.addEventListener('click', () => addSettingsRow('settings-etats-list', {
+            kind: 'etat',
+            color: FALLBACK_ETAT_COLOR
+        }));
+    }
+
+    const saveBtn = document.getElementById('settings-save');
+    if (saveBtn) saveBtn.addEventListener('click', saveSettings);
+
+    // Réordonnancement / suppression des lignes : délégation sur les conteneurs.
+    ['settings-porteurs-list', 'settings-etats-list'].forEach(id => {
+        const list = document.getElementById(id);
+        if (!list) return;
+        list.addEventListener('click', event => {
+            const action = event.target.closest('button')?.dataset.action;
+            const row = event.target.closest('.settings-row');
+            if (!action || !row) return;
+
+            if (action === 'up' && row.previousElementSibling) {
+                row.parentNode.insertBefore(row, row.previousElementSibling);
+            } else if (action === 'down' && row.nextElementSibling) {
+                row.parentNode.insertBefore(row.nextElementSibling, row);
+            } else if (action === 'delete') {
+                row.remove();
+            }
+        });
+    });
+}
+
+function addSettingsRow(listId, opts) {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    const row = buildSettingsRow({ name: '', ...opts });
+    list.appendChild(row);
+    const input = row.querySelector('.settings-row-name');
+    if (input) input.focus();
+}
+
+function buildSettingsRow({ kind, name, color, role }) {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    if (role) row.dataset.role = role;
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'settings-row-name';
+    nameInput.value = name || '';
+    nameInput.maxLength = 100;
+    nameInput.setAttribute('aria-label', kind === 'etat' ? "Nom de l'état" : 'Nom du porteur');
+    row.appendChild(nameInput);
+
+    if (kind === 'etat') {
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.className = 'settings-row-color';
+        colorInput.value = /^#[0-9a-f]{6}$/i.test(color || '') ? color : FALLBACK_ETAT_COLOR;
+        colorInput.setAttribute('aria-label', 'Couleur de fond');
+        row.appendChild(colorInput);
+    }
+
+    const makeButton = (action, label, glyph) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'settings-row-btn';
+        b.dataset.action = action;
+        b.textContent = glyph;
+        b.setAttribute('aria-label', label);
+        return b;
+    };
+
+    row.appendChild(makeButton('up', 'Monter', '↑'));
+    row.appendChild(makeButton('down', 'Descendre', '↓'));
+
+    if (role) {
+        const lock = document.createElement('span');
+        lock.className = 'settings-row-lock';
+        lock.textContent = '🔒';
+        lock.title = 'Statut particulier — non supprimable';
+        row.appendChild(lock);
+    } else {
+        row.appendChild(makeButton('delete', 'Supprimer', '🗑'));
+    }
+
+    return row;
+}
+
+function openSettings() {
+    const backdrop = document.getElementById('settings-modal');
+    const porteursList = document.getElementById('settings-porteurs-list');
+    const etatsList = document.getElementById('settings-etats-list');
+    const errorEl = document.getElementById('settings-error');
+    const saveBtn = document.getElementById('settings-save');
+    if (!backdrop || !porteursList || !etatsList) return;
+
+    if (errorEl) {
+        errorEl.hidden = true;
+        errorEl.textContent = '';
+    }
+
+    porteursList.innerHTML = '';
+    getPorteurChoices().forEach(nom => {
+        porteursList.appendChild(buildSettingsRow({ kind: 'porteur', name: nom }));
+    });
+
+    etatsList.innerHTML = '';
+    getEtatDropdownOrder().forEach(nom => {
+        let role = null;
+        if (nom === etatRoles.cloture) role = 'cloture';
+        else if (nom === etatRoles.supprimer) role = 'supprimer';
+        etatsList.appendChild(buildSettingsRow({
+            kind: 'etat',
+            name: nom,
+            color: columnChoices.etatColors[nom] || DEFAULT_ETAT_COLORS[nom] || FALLBACK_ETAT_COLOR,
+            role
+        }));
+    });
+
+    const readOnly = columnChoices.source !== 'grist';
+    if (saveBtn) saveBtn.disabled = readOnly;
+    if (readOnly && errorEl) {
+        errorEl.hidden = false;
+        errorEl.textContent = "Configuration Grist inaccessible : l'enregistrement est désactivé.";
+    }
+
+    settingsLastFocus = document.activeElement;
+    backdrop.hidden = false;
+    const closeBtn = document.getElementById('settings-close');
+    if (closeBtn) closeBtn.focus();
+}
+
+function closeSettings() {
+    const backdrop = document.getElementById('settings-modal');
+    if (!backdrop) return;
+    backdrop.hidden = true;
+    if (settingsLastFocus && typeof settingsLastFocus.focus === 'function') {
+        settingsLastFocus.focus();
+    }
+    settingsLastFocus = null;
+}
+
+function trapModalFocus(event, container) {
+    const focusables = [...container.querySelectorAll('button, input, [tabindex]')]
+        .filter(el => !el.disabled && el.offsetParent !== null);
+    if (focusables.length === 0) return;
+
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function readSettingsRows(listId, kind) {
+    return [...document.getElementById(listId).querySelectorAll('.settings-row')].map(row => {
+        const entry = {
+            name: validateInput(row.querySelector('.settings-row-name').value, 'text', 100),
+            role: row.dataset.role || null
+        };
+        if (kind === 'etat') {
+            const raw = row.querySelector('.settings-row-color').value;
+            entry.color = /^#[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : FALLBACK_ETAT_COLOR;
+        }
+        return entry;
+    });
+}
+
+function firstDuplicate(names) {
+    const seen = new Set();
+    for (const name of names) {
+        const key = name.toLowerCase();
+        if (seen.has(key)) return name;
+        seen.add(key);
+    }
+    return null;
+}
+
+async function saveSettings() {
+    const errorEl = document.getElementById('settings-error');
+    const saveBtn = document.getElementById('settings-save');
+    const showError = message => {
+        if (errorEl) {
+            errorEl.hidden = false;
+            errorEl.textContent = message;
+        }
+    };
+    if (errorEl) {
+        errorEl.hidden = true;
+        errorEl.textContent = '';
+    }
+
+    if (columnChoices.source !== 'grist') {
+        showError('Configuration Grist inaccessible : enregistrement impossible.');
+        return;
+    }
+
+    const porteurEntries = readSettingsRows('settings-porteurs-list', 'porteur').filter(r => r.name);
+    const etatRows = readSettingsRows('settings-etats-list', 'etat');
+
+    if (etatRows.some(r => r.role && !r.name)) {
+        showError("Le nom d'un état à statut particulier ne peut pas être vide.");
+        return;
+    }
+    const etatEntries = etatRows.filter(r => r.name);
+
+    const porteurNames = porteurEntries.map(r => r.name);
+    const dupPorteur = firstDuplicate(porteurNames);
+    if (dupPorteur) {
+        showError(`Porteur en double : « ${dupPorteur} ».`);
+        return;
+    }
+    const dupEtat = firstDuplicate(etatEntries.map(r => r.name));
+    if (dupEtat) {
+        showError(`État en double : « ${dupEtat} ».`);
+        return;
+    }
+
+    const clotureRow = etatEntries.find(r => r.role === 'cloture');
+    const supprimerRow = etatEntries.find(r => r.role === 'supprimer');
+    if (!clotureRow || !supprimerRow) {
+        showError('Les états « clôturé » et « à supprimer » doivent rester présents.');
+        return;
+    }
+    const newRoles = { cloture: clotureRow.name, supprimer: supprimerRow.name };
+
+    // Un rôle protégé renommé : on met à jour les dossiers concernés pour que le
+    // statut particulier suive le nouveau nom (après confirmation).
+    const bulkActions = [];
+    for (const [role, oldName] of [['cloture', etatRoles.cloture], ['supprimer', etatRoles.supprimer]]) {
+        const newName = newRoles[role];
+        if (oldName && newName && oldName !== newName) {
+            const ids = tablesData.ODJ.filter(d => d.Etat === oldName).map(d => d.id);
+            if (ids.length > 0) {
+                const ok = confirm(
+                    `Renommer « ${oldName} » en « ${newName} » mettra à jour ${ids.length} `
+                    + 'dossier(s) existant(s). Continuer ?'
+                );
+                if (!ok) return;
+                bulkActions.push(['BulkUpdateRecord', 'ODJ', ids, { Etat: ids.map(() => newName) }]);
+            }
+        }
+    }
+
+    const choiceOptions = {};
+    etatEntries.forEach(r => {
+        choiceOptions[r.name] = { fillColor: r.color, textColor: contrastText(r.color) };
+    });
+
+    const nextEtatOptions = {
+        ...columnChoices.etatOptions,
+        choices: etatEntries.map(r => r.name),
+        choiceOptions
+    };
+    const nextPorteurOptions = { ...columnChoices.porteurOptions, choices: porteurNames };
+
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        await grist.docApi.applyUserActions([
+            ['ModifyColumn', 'ODJ', 'Etat', { widgetOptions: JSON.stringify(nextEtatOptions) }],
+            ['ModifyColumn', 'ODJ', 'Porteur_s_', { widgetOptions: JSON.stringify(nextPorteurOptions) }],
+            ...bulkActions
+        ]);
+
+        try {
+            await writeWidgetOption('etatRoles', newRoles);
+        } catch (error) {
+            console.warn("Enregistrement des rôles d'état impossible (option de widget).", error);
+        }
+
+        closeSettings();
+
+        const activeTab = document.querySelector('.tab-button.active')?.dataset.tab;
+        await refreshActiveTabData(activeTab);
+    } catch (error) {
+        console.error('Enregistrement des paramètres impossible :', error);
+        showError('Enregistrement impossible. Vérifiez vos droits sur le document.');
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
 
 // ========================================
 // DÉMARRAGE

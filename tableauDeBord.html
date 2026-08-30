@@ -16,6 +16,8 @@
             <button class="tab-button" data-tab="reunion">Réunion</button>
             <button class="tab-button" data-tab="consulter">Consulter</button>
             <button class="tab-button" data-tab="modifier">Modifier</button>
+            <button id="btn-settings" class="settings-btn" type="button" aria-label="Paramètres"
+                title="Paramètres">⚙️</button>
         </div>
 
         <!-- ONGLET SAISIR -->
@@ -300,6 +302,35 @@
 
             <div class="button-group hidden" id="modify-buttons">
                 <button type="button" class="btn-secondary" id="btn-close-modifications">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panneau de paramètres (⚙️) -->
+    <div id="settings-modal" class="modal-backdrop" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="modal-header">
+                <h2 id="settings-title">Paramètres</h2>
+                <button type="button" class="modal-close" id="settings-close" aria-label="Fermer">×</button>
+            </div>
+            <div class="modal-body">
+                <section class="settings-section">
+                    <h3>Porteurs</h3>
+                    <div class="settings-list" id="settings-porteurs-list"></div>
+                    <button type="button" class="btn-secondary settings-add-btn" id="settings-add-porteur">＋ Ajouter un
+                        porteur</button>
+                </section>
+                <section class="settings-section">
+                    <h3>États</h3>
+                    <div class="settings-list" id="settings-etats-list"></div>
+                    <button type="button" class="btn-secondary settings-add-btn" id="settings-add-etat">＋ Ajouter un
+                        état</button>
+                </section>
+                <p class="settings-error" id="settings-error" role="alert" hidden></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="settings-cancel">Annuler</button>
+                <button type="button" class="btn-primary" id="settings-save">Enregistrer</button>
             </div>
         </div>
     </div>
