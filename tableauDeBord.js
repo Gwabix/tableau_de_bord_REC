@@ -357,16 +357,18 @@ function initWidget() {
         requiredAccess: 'full'
     });
 
-    // grist.onRecord peut se déclencher à chaque déplacement de curseur dans
-    // Grist. On n'initialise (et on ne reconstruit les formulaires) qu'une
-    // seule fois : sinon une saisie en cours dans « Saisir » serait écrasée.
-    // Les données se rafraîchissent au changement d'onglet et après chaque
-    // enregistrement.
-    grist.onRecord(async function () {
+    // On initialise une seule fois (sinon une saisie en cours dans « Saisir »
+    // serait écrasée) ; les données se rafraîchissent au changement d'onglet et
+    // après chaque enregistrement.
+    //
+    // grist.onRecords (et non onRecord) : il se déclenche dès que les données de
+    // la table sont disponibles, même si ODJ est vide — contrairement à
+    // onRecord, qui n'émet que s'il existe un enregistrement courant.
+    grist.onRecords(async function () {
         if (widgetInitialized || widgetInitializing) return;
         widgetInitializing = true;
         try {
-            if (!await loadAllTables()) return; // réessai au prochain onRecord
+            if (!await loadAllTables()) return; // réessai au prochain événement
             initializeUI();
             attachEventListeners();
             widgetInitialized = true;
@@ -963,7 +965,7 @@ let eventListenersAttached = false;
 
 function attachEventListeners() {
     // Les éléments statiques ne doivent recevoir leurs écouteurs qu'une seule fois,
-    // même si grist.onRecord relance l'initialisation à chaque changement de curseur.
+    // même si l'initialisation est relancée.
     if (eventListenersAttached) return;
     eventListenersAttached = true;
 
