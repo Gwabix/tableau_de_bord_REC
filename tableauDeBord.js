@@ -4142,6 +4142,9 @@ function buildSettingsRow({ kind, name, color, role }) {
     const row = document.createElement('div');
     row.className = 'settings-row';
     if (role) row.dataset.role = role;
+    // Nom d'origine (vide pour une ligne ajoutée) : sert à détecter un
+    // renommage à l'enregistrement.
+    row.dataset.original = name || '';
 
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
@@ -4183,8 +4186,8 @@ function buildSettingsRow({ kind, name, color, role }) {
         row.appendChild(lock);
     } else {
         const deleteTooltip = kind === 'etat'
-            ? "Supprimer l'état\n(les anciens dossiers seront conservés)"
-            : 'Supprimer le porteur\n(les anciens dossiers seront conservés)';
+            ? "Supprimer l'état\n(les anciens dossiers\nseront conservés)"
+            : 'Supprimer le porteur\n(les anciens dossiers\nseront conservés)';
         row.appendChild(makeButton('delete', deleteTooltip, '🗑'));
     }
 
@@ -4266,6 +4269,7 @@ function readSettingsRows(listId, kind) {
     return [...document.getElementById(listId).querySelectorAll('.settings-row')].map(row => {
         const entry = {
             name: validateInput(row.querySelector('.settings-row-name').value, 'text', 100),
+            original: row.dataset.original || '',
             role: row.dataset.role || null
         };
         if (kind === 'etat') {
@@ -4284,6 +4288,22 @@ function firstDuplicate(names) {
         seen.add(key);
     }
     return null;
+}
+
+/**
+ * Demande, pour une entrée renommée qui concerne des dossiers, s'il faut
+ * convertir ces dossiers ou conserver l'ancienne valeur.
+ * @returns {boolean} true = convertir les dossiers existants
+ */
+function confirmRename(quoi, ancien, nouveau, nbDossiers) {
+    const s = nbDossiers > 1 ? 's' : '';
+    return confirm(
+        `Vous avez renommé ${quoi} « ${ancien} » en « ${nouveau} ».\n`
+        + `${nbDossiers} dossier${s} utilise${s} encore « ${ancien} ».\n\n`
+        + `• OK : convertir ce${s} dossier${s} vers « ${nouveau} ».\n`
+        + `• Annuler : conserver le${s} dossier${s} tel${s} quel${s} `
+        + `(« ${nouveau} » devient une entrée distincte de « ${ancien} »).`
+    );
 }
 
 async function saveSettings() {
@@ -4334,21 +4354,32 @@ async function saveSettings() {
     }
     const newRoles = { cloture: clotureRow.name, supprimer: supprimerRow.name };
 
-    // Un rôle protégé renommé : on met à jour les dossiers concernés pour que le
-    // statut particulier suive le nouveau nom (après confirmation).
+    // Renommages : pour chaque entrée renommée qui concerne des dossiers, on
+    // demande s'il faut convertir ces dossiers ou garder l'ancienne valeur.
     const bulkActions = [];
-    for (const [role, oldName] of [['cloture', etatRoles.cloture], ['supprimer', etatRoles.supprimer]]) {
-        const newName = newRoles[role];
-        if (oldName && newName && oldName !== newName) {
-            const ids = tablesData.ODJ.filter(d => d.Etat === oldName).map(d => d.id);
-            if (ids.length > 0) {
-                const ok = confirm(
-                    `Renommer « ${oldName} » en « ${newName} » mettra à jour ${ids.length} `
-                    + 'dossier(s) existant(s). Continuer ?'
-                );
-                if (!ok) return;
-                bulkActions.push(['BulkUpdateRecord', 'ODJ', ids, { Etat: ids.map(() => newName) }]);
-            }
+
+    for (const row of etatEntries) {
+        if (!row.original || row.original === row.name) continue;
+        const ids = tablesData.ODJ.filter(d => (d.Etat || '') === row.original).map(d => d.id);
+        if (ids.length === 0) continue;
+        if (confirmRename('l’état', row.original, row.name, ids.length)) {
+            bulkActions.push(['BulkUpdateRecord', 'ODJ', ids, { Etat: ids.map(() => row.name) }]);
+        }
+    }
+
+    for (const row of porteurEntries) {
+        if (!row.original || row.original === row.name) continue;
+        const ids = [];
+        const values = [];
+        tablesData.ODJ.forEach(d => {
+            const list = getDossierPorteurs(d);
+            if (!list.includes(row.original)) return;
+            ids.push(d.id);
+            values.push(['L', ...new Set(list.map(p => (p === row.original ? row.name : p)))]);
+        });
+        if (ids.length === 0) continue;
+        if (confirmRename('le porteur', row.original, row.name, ids.length)) {
+            bulkActions.push(['BulkUpdateRecord', 'ODJ', ids, { Porteur_s_: values }]);
         }
     }
 
