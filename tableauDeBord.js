@@ -4182,7 +4182,7 @@ function buildSettingsRow({ kind, name, color, role }) {
         const lock = document.createElement('span');
         lock.className = 'settings-row-lock';
         lock.textContent = '🔒';
-        lock.title = 'Statut particulier — non supprimable';
+        lock.title = 'Non supprimable';
         row.appendChild(lock);
     } else {
         const deleteTooltip = kind === 'etat'
@@ -4356,13 +4356,25 @@ async function saveSettings() {
 
     // Renommages : pour chaque entrée renommée qui concerne des dossiers, on
     // demande s'il faut convertir ces dossiers ou garder l'ancienne valeur.
+    // Exception : les états à statut particulier — la conversion est
+    // obligatoire (le statut doit rester attaché à tous les dossiers).
     const bulkActions = [];
 
     for (const row of etatEntries) {
         if (!row.original || row.original === row.name) continue;
         const ids = tablesData.ODJ.filter(d => (d.Etat || '') === row.original).map(d => d.id);
         if (ids.length === 0) continue;
-        if (confirmRename('l’état', row.original, row.name, ids.length)) {
+
+        if (row.role) {
+            const s = ids.length > 1 ? 's' : '';
+            const ok = confirm(
+                `L'état « ${row.original} » va être renommé en « ${row.name} ».\n`
+                + `${ids.length} dossier${s} concerné${s} ${ids.length > 1 ? 'seront' : 'sera'} `
+                + 'mis à jour (obligatoire pour ce statut particulier).\n\nContinuer ?'
+            );
+            if (!ok) return;
+            bulkActions.push(['BulkUpdateRecord', 'ODJ', ids, { Etat: ids.map(() => row.name) }]);
+        } else if (confirmRename('l’état', row.original, row.name, ids.length)) {
             bulkActions.push(['BulkUpdateRecord', 'ODJ', ids, { Etat: ids.map(() => row.name) }]);
         }
     }
