@@ -188,6 +188,21 @@ function getEtatSortOrder() {
     return columnChoices.etats.filter(e => e !== etatRoles.supprimer).reverse();
 }
 
+// Clé de filtrage des dossiers dont l'état a été retiré des paramètres ⚙️.
+const OBSOLETE_ETAT_KEY = '__etat_retire__';
+
+/**
+ * Clé de filtrage « par état » d'un dossier : le nom de l'état s'il fait partie
+ * des choix courants, '' s'il n'y a pas d'état, sinon OBSOLETE_ETAT_KEY — un
+ * état encore porté par d'anciens dossiers mais retiré des paramètres.
+ */
+function etatFilterKey(dossier) {
+    const etat = dossier.Etat || '';
+    if (!etat) return '';
+    const courants = getEtatDropdownOrder().filter(e => e !== etatRoles.supprimer);
+    return courants.includes(etat) ? etat : OBSOLETE_ETAT_KEY;
+}
+
 /** Noms des porteurs d'un dossier (retire le sentinelle 'L' de la ChoiceList). */
 function getDossierPorteurs(dossier) {
     return Array.isArray(dossier.Porteur_s_) ? dossier.Porteur_s_.filter(v => v !== 'L') : [];
@@ -589,8 +604,10 @@ function setDefaultDate() {
 // ========================================
 
 /**
- * (Re)construit un groupe de cases à cocher pour filtrer par état, avec une
- * case « Non renseigné » (value '') pour les dossiers sans état saisi.
+ * (Re)construit un groupe de cases à cocher pour filtrer par état :
+ *  - une case par état courant,
+ *  - « État retiré » (uniquement si des dossiers portent un état retiré du ⚙️),
+ *  - « État non renseigné » (value '') pour les dossiers sans état saisi.
  * @param {HTMLElement} container
  * @param {string} name - attribut name commun des cases
  */
@@ -598,6 +615,11 @@ function buildEtatFilterCheckboxes(container, name) {
     if (!container) return;
 
     const etats = getEtatDropdownOrder().filter(e => e !== etatRoles.supprimer);
+    const etatsSet = new Set(etats);
+    const aDesEtatsRetires = tablesData.ODJ.some(d => {
+        const e = d.Etat || '';
+        return e && !etatsSet.has(e);
+    });
     container.innerHTML = '';
 
     const addCheckbox = (value, labelText) => {
@@ -619,6 +641,7 @@ function buildEtatFilterCheckboxes(container, name) {
     };
 
     etats.forEach(etat => addCheckbox(etat, etat));
+    if (aDesEtatsRetires) addCheckbox(OBSOLETE_ETAT_KEY, 'État retiré');
     addCheckbox('', 'État non renseigné');
 }
 
@@ -2112,11 +2135,9 @@ function consultByPorteur() {
     // Garder uniquement le record le plus récent par dossier (avant de filtrer par état)
     dossiers = getLatestEntriesPerDossier(dossiers);
 
-    // Filtrer par état sur le vrai état courant du dossier
-    dossiers = dossiers.filter(dossier => {
-        const etatName = dossier.Etat || '';
-        return selectedEtats.has(etatName);
-    });
+    // Filtrer par état courant (les états retirés du ⚙️ relèvent de la case
+    // « État retiré », pour que ces dossiers restent visibles).
+    dossiers = dossiers.filter(dossier => selectedEtats.has(etatFilterKey(dossier)));
 
     dossiers = sortConsultPorteurDossiers(dossiers, consultPorteurSortState);
 
@@ -2866,11 +2887,9 @@ function modifyByPorteurAllDossiers() {
     // Garder uniquement le record le plus récent par dossier (avant de filtrer par état)
     dossiers = getLatestEntriesPerDossier(dossiers);
 
-    // Filtrer par état sur le vrai état courant du dossier
-    dossiers = dossiers.filter(dossier => {
-        const etatName = dossier.Etat || '';
-        return selectedEtats.has(etatName);
-    });
+    // Filtrer par état courant (les états retirés du ⚙️ relèvent de la case
+    // « État retiré », pour que ces dossiers restent visibles).
+    dossiers = dossiers.filter(dossier => selectedEtats.has(etatFilterKey(dossier)));
 
     // Filtrer les dossiers échus si le toggle est activé (sur l'échéance courante)
     if (hideExpired) {
