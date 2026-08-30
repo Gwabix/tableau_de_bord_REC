@@ -1036,3 +1036,14 @@ tr:hover {
     color: #c0392b;
     font-size: 13px;
 }
+
+.settings-hint {
+    margin-bottom: 18px;
+    padding: 10px 12px;
+    border: 1px solid #16b378;
+    border-radius: 6px;
+    background: #f0f9f6;
+    color: #0f5c3f;
+    font-size: 13px;
+    line-height: 1.4;
+}

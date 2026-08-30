@@ -372,10 +372,21 @@ function initWidget() {
             initializeUI();
             attachEventListeners();
             widgetInitialized = true;
+            maybePromptFirstUse();
         } finally {
             widgetInitializing = false;
         }
     });
+}
+
+/**
+ * Nouveau document (aucun porteur configuré) : ouvre les paramètres avec un
+ * message d'accueil pour inviter à saisir les porteurs.
+ */
+function maybePromptFirstUse() {
+    if (columnChoices.source !== 'grist') return; // écriture impossible
+    if (getPorteurChoices().length > 0) return;
+    openSettings(true);
 }
 
 async function loadAllTables() {
@@ -4072,7 +4083,7 @@ function initSettingsPanel() {
     settingsPanelWired = true;
 
     const btn = document.getElementById('btn-settings');
-    if (btn) btn.addEventListener('click', openSettings);
+    if (btn) btn.addEventListener('click', () => openSettings());
 
     const closeBtn = document.getElementById('settings-close');
     if (closeBtn) closeBtn.addEventListener('click', closeSettings);
@@ -4196,11 +4207,12 @@ function buildSettingsRow({ kind, name, color, role }) {
     return row;
 }
 
-function openSettings() {
+function openSettings(firstUse = false) {
     const backdrop = document.getElementById('settings-modal');
     const porteursList = document.getElementById('settings-porteurs-list');
     const etatsList = document.getElementById('settings-etats-list');
     const errorEl = document.getElementById('settings-error');
+    const hintEl = document.getElementById('settings-hint');
     const saveBtn = document.getElementById('settings-save');
     if (!backdrop || !porteursList || !etatsList) return;
 
@@ -4209,10 +4221,21 @@ function openSettings() {
         errorEl.textContent = '';
     }
 
+    if (hintEl) {
+        hintEl.hidden = !firstUse;
+        hintEl.textContent = firstUse
+            ? 'Première utilisation : enregistrez les personnes susceptibles de porter les dossiers à l’ordre du jour.'
+            : '';
+    }
+
     porteursList.innerHTML = '';
     getPorteurChoices().forEach(nom => {
         porteursList.appendChild(buildSettingsRow({ kind: 'porteur', name: nom }));
     });
+    // Nouveau document : une ligne vide prête à être remplie.
+    if (firstUse && porteursList.children.length === 0) {
+        porteursList.appendChild(buildSettingsRow({ kind: 'porteur', name: '' }));
+    }
 
     etatsList.innerHTML = '';
     getEtatDropdownOrder().forEach(nom => {
@@ -4236,8 +4259,11 @@ function openSettings() {
 
     settingsLastFocus = document.activeElement;
     backdrop.hidden = false;
+
+    const firstPorteurInput = firstUse && porteursList.querySelector('.settings-row-name');
     const closeBtn = document.getElementById('settings-close');
-    if (closeBtn) closeBtn.focus();
+    if (firstPorteurInput) firstPorteurInput.focus();
+    else if (closeBtn) closeBtn.focus();
 }
 
 function closeSettings() {
@@ -4301,7 +4327,7 @@ function confirmRename(quoi, ancien, nouveau, nbDossiers) {
     const s = nbDossiers > 1 ? 's' : '';
     return confirm(
         `Vous avez renommé ${quoi} « ${ancien} » en « ${nouveau} ».\n`
-        + `${nbDossiers} dossier${s} utilise${s} encore « ${ancien} ».\n\n`
+        + `${nbDossiers} dossier${s} utilise${nt} encore « ${ancien} ».\n\n`
         + `• OK : convertir ce${s} dossier${s} vers « ${nouveau} ».\n`
         + `• Annuler : conserver le${s} dossier${s} tel${s} quel${s} `
         + `(« ${nouveau} » devient une entrée distincte de « ${ancien} »).`
