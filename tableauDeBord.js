@@ -4160,18 +4160,20 @@ function buildSettingsRow({ kind, name, color, role }) {
         row.appendChild(colorInput);
     }
 
-    const makeButton = (action, label, glyph) => {
+    const makeButton = (action, tooltip, glyph) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'settings-row-btn';
         b.dataset.action = action;
         b.textContent = glyph;
-        b.setAttribute('aria-label', label);
+        // Le retour à la ligne d'une info-bulle native se fait avec \n.
+        b.title = tooltip;
+        b.setAttribute('aria-label', tooltip.replace(/\n/g, ' '));
         return b;
     };
 
-    row.appendChild(makeButton('up', 'Monter', '↑'));
-    row.appendChild(makeButton('down', 'Descendre', '↓'));
+    row.appendChild(makeButton('up', 'Monter dans la liste', '↑'));
+    row.appendChild(makeButton('down', 'Descendre dans la liste', '↓'));
 
     if (role) {
         const lock = document.createElement('span');
@@ -4180,7 +4182,10 @@ function buildSettingsRow({ kind, name, color, role }) {
         lock.title = 'Statut particulier — non supprimable';
         row.appendChild(lock);
     } else {
-        row.appendChild(makeButton('delete', 'Supprimer', '🗑'));
+        const deleteTooltip = kind === 'etat'
+            ? "Supprimer l'état\n(les anciens dossiers seront conservés)"
+            : 'Supprimer le porteur\n(les anciens dossiers seront conservés)';
+        row.appendChild(makeButton('delete', deleteTooltip, '🗑'));
     }
 
     return row;
