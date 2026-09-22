@@ -1046,4 +1046,6 @@ tr:hover {
     color: #0f5c3f;
     font-size: 13px;
     line-height: 1.4;
+    /* Le texte injecté conserve ses sauts de ligne (voir openSettings). */
+    white-space: pre-line;
 }
