@@ -4242,9 +4242,16 @@ function openSettings(firstUse = false) {
 
     if (hintEl) {
         hintEl.hidden = !firstUse;
-        hintEl.textContent = firstUse
-            ? 'Première utilisation : enregistrez les personnes susceptibles de porter les dossiers à l’ordre du jour.\nVous pourrez ensuite ajouter ou modifier les porteurs et états à tout moment (icône ⚙️ en haut à droite du tableau de bord).'
-            : '';
+        // Contenu construit en DOM : seule l'amorce est en gras.
+        hintEl.textContent = '';
+        if (firstUse) {
+            const amorce = document.createElement('strong');
+            amorce.textContent = 'Première utilisation :';
+            hintEl.append(
+                amorce,
+                ' enregistrez les personnes susceptibles de porter les dossiers à l’ordre du jour.\nVous pourrez ensuite ajouter ou modifier les porteurs et états à tout moment (icône ⚙️ en haut à droite du tableau de bord).'
+            );
+        }
     }
 
     porteursList.innerHTML = '';
