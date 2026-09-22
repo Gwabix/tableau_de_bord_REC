@@ -4243,7 +4243,7 @@ function openSettings(firstUse = false) {
     if (hintEl) {
         hintEl.hidden = !firstUse;
         hintEl.textContent = firstUse
-            ? 'Première utilisation : enregistrez les personnes susceptibles de porter les dossiers à l’ordre du jour.'
+            ? 'Première utilisation : enregistrez les personnes susceptibles de porter les dossiers à l’ordre du jour.<br>Vous pourrez ensuite ajouter ou modifier les porteurs et états à tout moment (icône ⚙️ en haut à droite du tableau de bord).'
             : '';
     }
 
